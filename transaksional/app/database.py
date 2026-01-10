@@ -1,11 +1,3 @@
-"""
-Database Manager - Support Draft & Final Registration
-======================================================
-- Save draft secara berkala
-- Update ke confirmed saat final
-- Track semua perubahan
-"""
-
 import sqlite3
 import json
 from datetime import datetime, timedelta

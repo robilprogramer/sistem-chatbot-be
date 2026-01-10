@@ -479,7 +479,7 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
             session.set_document(field.id, file_info)
         
         try:
-            from app.database import get_db_manager
+            from  transaksional.app.database import get_db_manager
             db = get_db_manager()
             db.save_document(
                 session_id=session.session_id,

@@ -24,6 +24,16 @@ from informasional.models.master_kategori import MasterKategoriModel
 from informasional.models.document import Document, DocumentPage
 from informasional.models.chunk import ChunkModel
 from informasional.models.embedding import EmbeddingModel
+# Import model transaksional (TAMBAH INI)
+from informasional.models.registration import (
+    StudentRegistration,
+    RegistrationDocument,
+    RegistrationTracking,
+)
+from informasional.models.conversation import (
+    Conversation,
+    ConversationState,
+)
 config = context.config
 
 DATABASE_URL = os.getenv("DATABASE_URL")

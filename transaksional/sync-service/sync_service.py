@@ -22,6 +22,18 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from contextlib import contextmanager
 import os
+from pathlib import Path
+# Load .env file
+from dotenv import load_dotenv
+
+# Cari .env dari root project (backend/)
+env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(env_path)
+
+print(f"📂 Loading .env from: {env_path}")
+print(f"📂 .env exists: {env_path.exists()}")
+print(f"📂 DATABASE_URL: {os.getenv('DATABASE_URL', 'NOT FOUND')}")
+
 
 # PostgreSQL
 try:
@@ -51,13 +63,18 @@ class SyncService:
     - conversation_state
     """
     
-    def __init__(self, sqlite_path: str = "../data/registrations.db", 
+    def __init__(self, sqlite_path: str = None, 
                  postgres_url: str = None):
+         # Auto-resolve path ke backend/data/registrations.db
+        if sqlite_path is None:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            sqlite_path = os.path.join(project_root, "data", "registrations.db")
+        
         self.sqlite_path = sqlite_path
         self.postgres_url = postgres_url or os.getenv(
-            "DATABASE_URL", 
-            "postgresql://admin:admin123@localhost:5432/ypi_alazhar_db"
-        )
+                "DATABASE_URL", 
+                "postgresql://admin:admin123@localhost:5432/xxxxx"
+            )
         self.sync_log = []
     
     # =========================================================================
@@ -67,6 +84,7 @@ class SyncService:
     @contextmanager
     def get_sqlite_conn(self):
         """Get SQLite connection"""
+        print(f"🔗 Connecting to SQLite DB at: {self.sqlite_path}")
         conn = sqlite3.connect(self.sqlite_path)
         conn.row_factory = sqlite3.Row
         try:
