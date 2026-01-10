@@ -25,7 +25,7 @@ def get_db():
 # ------------------------------
 @router.post("/process", response_model=ChunkingResponse)
 def chunk_documents(payload: ChunkingRequest, db: Session = Depends(get_db)):
-    chunker = EnhancedChunker(config_path="config/config.yaml")
+    chunker = EnhancedChunker(config_path="informasional/config/config.yaml")
     master_repo = MasterRepository(db)
     docrepo = DocumentRepository(db)
     extractor = MetadataExtractor(master_repo)

@@ -117,13 +117,15 @@ class DocumentRepository:
         images_data: List[dict],
         layout_info: dict,
         ocr_confidence: Optional[float],
-        extraction_duration: float
+        extraction_duration: float,
+        raw_text_original: str,
     ) -> Optional[Document]:
         """
         Update document dengan hasil ekstraksi
         """
         update_data = {
             "raw_text": raw_text,
+            "raw_text_original": raw_text_original,
             "text_length": len(raw_text),
             "total_pages": total_pages,
             "is_scanned": is_scanned,

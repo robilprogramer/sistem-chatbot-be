@@ -10,6 +10,9 @@ from informasional.api.embeding_router import router as embedding_router
 from informasional.api.chat_router import router as chat_router  
 from informasional.api.document_router import router as document_router
 from informasional.api.statistics_router import router as statistics_router
+from informasional.models.master_cabang import MasterCabangModel
+from informasional.models.master_jenjang import MasterJenjangModel  
+from informasional.models.master_kategori import MasterKategoriModel
 from informasional.utils.db import Base, engine
 
 # Transactional chatbot routers

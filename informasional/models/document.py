@@ -36,6 +36,7 @@ class Document(Base):
     
     # Extracted Content (RAW TEXT GABUNGAN SEMUA PAGE)
     raw_text = Column(Text, nullable=True)  # Full text dari semua pages
+    raw_text_original = Column(Text, nullable=True)  # ← Tambah field baru
     text_length = Column(Integer, nullable=True)
     
     # Structured Data

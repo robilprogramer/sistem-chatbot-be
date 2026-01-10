@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 @dataclass
 class KnowledgeResult:
     """Result dari konversi PDF ke knowledge base"""
+    raw_text: str  # Text asli yang diekstrak dari PDF
     knowledge_text: str  # Text final yang sudah ditulis ulang AI
     total_pages: int
     original_length: int
@@ -217,7 +218,7 @@ Hasil knowledge base:"""
         
         # Step 1: Extract content
         text, tables, total_pages = self.extract_pdf_content(pdf_path)
-        
+        raw_text = text  # Simpan text asli
         # Step 2: AI rewrite
         knowledge_text = self.ai_rewrite_to_knowledge(text, tables, doc_title)
         
@@ -234,6 +235,7 @@ Hasil knowledge base:"""
         print(f"{'='*70}\n")
         
         return KnowledgeResult(
+            raw_text=raw_text,
             knowledge_text=knowledge_text,
             total_pages=total_pages,
             original_length=len(text),

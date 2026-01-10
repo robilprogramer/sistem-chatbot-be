@@ -87,6 +87,7 @@ class DocumentService:
                 doc_title=document.original_filename
             )
             
+            print(result.raw_text[:500])  # Print preview of raw text
             print("✅ Conversion completed!")
             
             # Update document with results
@@ -106,7 +107,8 @@ class DocumentService:
                     "knowledge_length": result.knowledge_length
                 },
                 ocr_confidence=None,
-                extraction_duration=result.processing_duration
+                extraction_duration=result.processing_duration,
+                raw_text_original=result.raw_text
             )
             
             return {

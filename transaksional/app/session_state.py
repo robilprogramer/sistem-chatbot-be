@@ -155,7 +155,7 @@ class SessionManager:
     @property
     def db(self):
         if self._db is None and self.use_db:
-            from app.database import get_db_manager
+            from  transaksional.app.database import get_db_manager
             self._db = get_db_manager()
         return self._db
     
@@ -198,7 +198,7 @@ class SessionManager:
         
         # Auto-save draft to database
         if self.use_db and self.db and session.status == SessionStatus.ACTIVE:
-            from app.form_manager import get_form_manager
+            from  transaksional.app.form_manager import get_form_manager
             form_manager = get_form_manager()
             completion = form_manager.calculate_completion(session.raw_data)
             

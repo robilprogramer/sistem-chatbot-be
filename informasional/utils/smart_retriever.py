@@ -1,9 +1,3 @@
-# ============================================================================
-# FILE: utils/smart_retriever.py - SIMPLIFIED
-# ============================================================================
-"""
-Simplified Smart Retriever - Pure Embedding Search
-"""
 
 from typing import List, Dict
 from langchain_core.documents import Document
@@ -12,10 +6,6 @@ import numpy as np
 
 
 class SmartRetriever:
-    """
-    Simplified retriever with pure embedding-based search
-    """
-    
     def __init__(
         self,
         vectorstore: Chroma,
