@@ -1,0 +1,907 @@
+# =============================================================================
+# FORM CONFIGURATION - YPI Al-Azhar Dynamic Registration Chatbot
+# =============================================================================
+# VERSI FINAL - Support semua fitur:
+# - Multi-step form wizard
+# - Upload dokumen satu per satu
+# - Nilai rapor
+# - Status tracking
+# - Navigasi maju-mundur
+# =============================================================================
+
+form:
+  id: "student_registration"
+  name: "Pendaftaran Siswa Baru YPI Al-Azhar"
+  version: "3.0.0"
+  description: "Form pendaftaran siswa baru untuk semua jenjang"
+  
+  confirmation:
+    min_completion_percentage: 60
+    require_all_mandatory_fields: true
+    allow_partial_save: true
+  
+  # Enable draft auto-save
+  auto_save:
+    enabled: true
+    interval_seconds: 30
+    persist_to_db: true
+
+# -----------------------------------------------------------------------------
+# STEPS - Multi-Step Form Wizard
+# -----------------------------------------------------------------------------
+steps:
+  - id: "school_selection"
+    name: "Pilihan Sekolah"
+    description: "Pilih sekolah dan program yang dituju"
+    order: 1
+    is_mandatory: true
+    can_skip: false
+    icon: "🏫"
+    
+  - id: "student_info"
+    name: "Data Siswa"
+    description: "Informasi lengkap calon siswa"
+    order: 2
+    is_mandatory: true
+    can_skip: false
+    icon: "👤"
+    
+  - id: "parent_info"
+    name: "Data Orang Tua/Wali"
+    description: "Informasi orang tua atau wali"
+    order: 3
+    is_mandatory: true
+    can_skip: false
+    icon: "👨‍👩‍👧"
+    
+  - id: "academic_info"
+    name: "Riwayat Akademik"
+    description: "Informasi sekolah sebelumnya dan nilai rapor"
+    order: 4
+    is_mandatory: false
+    can_skip: true
+    skip_conditions:
+      - tingkatan: ["Playgroup", "TK A"]
+    icon: "📚"
+    
+  - id: "documents"
+    name: "Dokumen Pendukung"
+    description: "Upload dokumen yang diperlukan satu per satu"
+    order: 5
+    is_mandatory: true
+    can_skip: false
+    icon: "📄"
+    
+  - id: "review"
+    name: "Review & Konfirmasi"
+    description: "Tinjau dan konfirmasi data"
+    order: 6
+    is_mandatory: true
+    can_skip: false
+    icon: "✅"
+
+# -----------------------------------------------------------------------------
+# FIELDS - Semua field yang tersedia
+# -----------------------------------------------------------------------------
+fields:
+  # === SCHOOL SELECTION ===
+  nama_sekolah:
+    label: "Nama Sekolah"
+    step: "school_selection"
+    type: "select"
+    is_mandatory: true
+    options:
+      - value: "TK Islam Al Azhar 1 Kebayoran Baru"
+        label: "TK Islam Al Azhar 1 Kebayoran Baru"
+        aliases: ["tk azhar kebayoran", "tk 1", "tk kebayoran"]
+      - value: "TK AL AZHAR CITRA RAYA TANGGERANG"
+        label: "TK AL AZHAR CITRA RAYA TANGGERANG"
+        aliases: ["tk azhar tanggerang", "tk citra raya", "tk tanggerang"]  
+      - value: "SD Islam Al Azhar 1 Kebayoran Baru"
+        label: "SD Islam Al Azhar 1 Kebayoran Baru"
+        aliases: ["sd azhar kebayoran", "sd 1", "sd kebayoran"]
+      - value: "SMP Islam Al Azhar 1 Kebayoran Baru"
+        label: "SMP Islam Al Azhar 1 Kebayoran Baru"
+        aliases: ["smp azhar", "smp 1"]
+      - value: "SMA Islam Al Azhar 1 Kebayoran Baru"
+        label: "SMA Islam Al Azhar 1 Kebayoran Baru"
+        aliases: ["sma azhar", "sma 1"]
+    examples:
+      - "TK Islam Al Azhar 1 Kebayoran Baru"
+    tips: "Pilih unit sekolah yang dituju"
+    
+  tingkatan:
+    label: "Tingkatan/Kelas"
+    step: "school_selection"
+    type: "select"
+    is_mandatory: true
+    depends_on: "nama_sekolah"
+    options:
+      - value: "Playgroup"
+        label: "Playgroup"
+        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+      - value: "TK A"
+        label: "TK A"
+        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+      - value: "TK B"
+        label: "TK B"
+        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+      - value: "Kelas 1 SD"
+        label: "Kelas 1 SD"
+        parent_values: ["SD Islam Al Azhar 1 Kebayoran Baru"]
+      - value: "Kelas 7 SMP"
+        label: "Kelas 7 SMP"
+        parent_values: ["SMP Islam Al Azhar 1 Kebayoran Baru"]
+      - value: "Kelas 10 SMA"
+        label: "Kelas 10 SMA"
+        parent_values: ["SMA Islam Al Azhar 1 Kebayoran Baru"]
+    examples:
+      - "Playgroup"
+      - "Kelas 1 SD"
+    tips: "Tingkatan yang akan dimasuki"
+    
+  program:
+    label: "Program"
+    step: "school_selection"
+    type: "select"
+    is_mandatory: true
+    options:
+      - value: "Reguler"
+        label: "Reguler"
+        aliases: ["regular", "biasa"]
+      - value: "Fullday"
+        label: "Fullday"
+        aliases: ["full day", "sehari penuh"]
+      - value: "Boarding"
+        label: "Boarding (Asrama)"
+        aliases: ["asrama", "boarding school"]
+    examples:
+      - "Reguler"
+      - "Fullday"
+    tips: "Program pendidikan yang dipilih"
+
+  # === STUDENT INFO ===
+  nama_lengkap:
+    label: "Nama Lengkap Siswa"
+    step: "student_info"
+    type: "text"
+    is_mandatory: true
+    validation:
+      min_length: 3
+      max_length: 100
+    examples:
+      - "Ahmad Fauzi Rahman"
+    tips: "Nama lengkap sesuai akta kelahiran"
+    extract_keywords: ["nama", "siswa", "anak", "name"]
+    
+  nama_panggilan:
+    label: "Nama Panggilan"
+    step: "student_info"
+    type: "text"
+    is_mandatory: false
+    examples:
+      - "Fauzi"
+    extract_keywords: ["panggilan", "dipanggil"]
+    
+  tempat_lahir:
+    label: "Tempat Lahir"
+    step: "student_info"
+    type: "text"
+    is_mandatory: true
+    examples:
+      - "Jakarta"
+      - "Bandung"
+    tips: "Kota/kabupaten tempat lahir"
+    extract_keywords: ["tempat lahir", "lahir di"]
+    
+  tanggal_lahir:
+    label: "Tanggal Lahir"
+    step: "student_info"
+    type: "date"
+    is_mandatory: true
+    validation:
+      format: "DD-MM-YYYY"
+    examples:
+      - "15-05-2010"
+      - "20 Januari 2012"
+    tips: "Format: DD-MM-YYYY atau tulis lengkap"
+    extract_keywords: ["tanggal lahir", "lahir tanggal", "tgl lahir", "dob"]
+    
+  jenis_kelamin:
+    label: "Jenis Kelamin"
+    step: "student_info"
+    type: "select"
+    is_mandatory: true
+    options:
+      - value: "Laki-laki"
+        aliases: ["laki", "pria", "cowok", "l", "male"]
+      - value: "Perempuan"
+        aliases: ["wanita", "cewek", "p", "female"]
+    examples:
+      - "Laki-laki"
+      - "Perempuan"
+    extract_keywords: ["jenis kelamin", "gender", "laki", "perempuan"]
+    
+  agama:
+    label: "Agama"
+    step: "student_info"
+    type: "select"
+    is_mandatory: true
+    options:
+      - value: "Islam"
+        aliases: ["muslim"]
+      - value: "Kristen"
+        aliases: ["kristen protestan", "protestan"]
+      - value: "Katolik"
+      - value: "Hindu"
+      - value: "Buddha"
+      - value: "Konghucu"
+    examples:
+      - "Islam"
+    extract_keywords: ["agama", "religion"]
+    
+  alamat:
+    label: "Alamat Lengkap"
+    step: "student_info"
+    type: "textarea"
+    is_mandatory: true
+    validation:
+      min_length: 10
+      max_length: 500
+    examples:
+      - "Jl. Kemang Raya No. 123, RT 01/RW 05, Jakarta Selatan"
+    tips: "Alamat lengkap termasuk RT/RW"
+    extract_keywords: ["alamat", "address", "tinggal di"]
+    
+  no_telepon:
+    label: "Nomor Telepon"
+    step: "student_info"
+    type: "phone"
+    is_mandatory: true
+    validation:
+      pattern: "^[0-9]{10,15}$"
+      error_message: "Nomor telepon harus 10-15 digit"
+    examples:
+      - "081234567890"
+    extract_keywords: ["telepon", "hp", "phone", "nomor"]
+    
+  email:
+    label: "Email"
+    step: "student_info"
+    type: "email"
+    is_mandatory: false
+    validation:
+      pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    examples:
+      - "ahmad@gmail.com"
+    extract_keywords: ["email", "e-mail"]
+
+  # === PARENT INFO ===
+  nama_ayah:
+    label: "Nama Ayah"
+    step: "parent_info"
+    type: "text"
+    is_mandatory: true
+    validation:
+      min_length: 2
+      max_length: 100
+    examples:
+      - "Budi Santoso"
+    extract_keywords: ["ayah", "bapak", "papa"]
+    
+  pekerjaan_ayah:
+    label: "Pekerjaan Ayah"
+    step: "parent_info"
+    type: "text"
+    is_mandatory: false
+    examples:
+      - "Pegawai Swasta"
+      - "PNS"
+      - "Wiraswasta"
+    extract_keywords: ["pekerjaan ayah", "kerja ayah"]
+    
+  no_telepon_ayah:
+    label: "Nomor Telepon Ayah"
+    step: "parent_info"
+    type: "phone"
+    is_mandatory: true
+    validation:
+      pattern: "^[0-9]{10,15}$"
+    examples:
+      - "081234567890"
+    extract_keywords: ["telepon ayah", "hp ayah"]
+    
+  nama_ibu:
+    label: "Nama Ibu"
+    step: "parent_info"
+    type: "text"
+    is_mandatory: true
+    validation:
+      min_length: 2
+      max_length: 100
+    examples:
+      - "Siti Rahayu"
+    extract_keywords: ["ibu", "mama"]
+    
+  pekerjaan_ibu:
+    label: "Pekerjaan Ibu"
+    step: "parent_info"
+    type: "text"
+    is_mandatory: false
+    examples:
+      - "Ibu Rumah Tangga"
+      - "Guru"
+    extract_keywords: ["pekerjaan ibu", "kerja ibu"]
+    
+  no_telepon_ibu:
+    label: "Nomor Telepon Ibu"
+    step: "parent_info"
+    type: "phone"
+    is_mandatory: false
+    validation:
+      pattern: "^[0-9]{10,15}$"
+    examples:
+      - "082198765432"
+    extract_keywords: ["telepon ibu", "hp ibu"]
+
+  # === ACADEMIC INFO (dengan NILAI RAPOR) ===
+  nama_sekolah_asal:
+    label: "Nama Sekolah Asal"
+    step: "academic_info"
+    type: "text"
+    is_mandatory: false
+    examples:
+      - "TK Harapan Bangsa"
+      - "SD Negeri 01 Jakarta"
+    tips: "Nama sekolah sebelumnya"
+    extract_keywords: ["sekolah asal", "sekolah sebelumnya"]
+    
+  alamat_sekolah_asal:
+    label: "Alamat Sekolah Asal"
+    step: "academic_info"
+    type: "text"
+    is_mandatory: false
+    examples:
+      - "Jl. Pendidikan No. 10, Jakarta Selatan"
+    extract_keywords: ["alamat sekolah"]
+    
+  tahun_lulus:
+    label: "Tahun Lulus"
+    step: "academic_info"
+    type: "year"
+    is_mandatory: false
+    validation:
+      min: 2020
+      max: 2026
+    examples:
+      - "2024"
+    extract_keywords: ["tahun lulus", "lulus tahun"]
+    
+  # NILAI RAPOR
+  nilai_rata_rata:
+    label: "Nilai Rata-Rata Rapor"
+    step: "academic_info"
+    type: "number"
+    is_mandatory: false
+    validation:
+      min: 0
+      max: 100
+    examples:
+      - "85"
+    tips: "Nilai rata-rata rapor semester terakhir"
+    extract_keywords: ["nilai rata", "rata-rata", "nilai rapor"]
+    
+  nilai_matematika:
+    label: "Nilai Matematika"
+    step: "academic_info"
+    type: "number"
+    is_mandatory: false
+    validation:
+      min: 0
+      max: 100
+    examples:
+      - "80"
+    extract_keywords: ["nilai matematika", "matematika", "mtk"]
+    
+  nilai_bahasa_indonesia:
+    label: "Nilai Bahasa Indonesia"
+    step: "academic_info"
+    type: "number"
+    is_mandatory: false
+    validation:
+      min: 0
+      max: 100
+    examples:
+      - "85"
+    extract_keywords: ["nilai bahasa indonesia", "b.indo"]
+    
+  nilai_bahasa_inggris:
+    label: "Nilai Bahasa Inggris"
+    step: "academic_info"
+    type: "number"
+    is_mandatory: false
+    validation:
+      min: 0
+      max: 100
+    examples:
+      - "80"
+    extract_keywords: ["nilai bahasa inggris", "b.ing", "english"]
+    
+  nilai_ipa:
+    label: "Nilai IPA"
+    step: "academic_info"
+    type: "number"
+    is_mandatory: false
+    validation:
+      min: 0
+      max: 100
+    examples:
+      - "82"
+    extract_keywords: ["nilai ipa", "ipa", "sains"]
+    
+  prestasi_akademik:
+    label: "Prestasi Akademik"
+    step: "academic_info"
+    type: "textarea"
+    is_mandatory: false
+    examples:
+      - "Juara 1 Olimpiade Matematika tingkat kecamatan"
+    tips: "Prestasi yang pernah diraih"
+    extract_keywords: ["prestasi", "juara", "ranking"]
+
+  # === DOCUMENTS (upload satu per satu) ===
+  akta_kelahiran:
+    label: "Akta Kelahiran"
+    step: "documents"
+    type: "file"
+    is_mandatory: true
+    order: 1
+    allowed_extensions: [".pdf", ".jpg", ".jpeg", ".png"]
+    max_size_mb: 5
+    tips: "Scan/foto akta kelahiran (PDF/JPG/PNG, max 5MB)"
+    prompt_message: |
+      📄 **DOKUMEN 1/6: Akta Kelahiran**
+      
+      Silakan upload scan/foto **Akta Kelahiran** siswa.
+      
+      ✅ Format: PDF, JPG, atau PNG
+      ✅ Ukuran: Maksimal 5MB
+      ✅ Pastikan tulisan terbaca jelas
+    success_message: "✅ Akta Kelahiran berhasil diupload!"
+    error_messages:
+      format: "❌ Format file tidak didukung. Gunakan PDF, JPG, atau PNG."
+      size: "❌ File terlalu besar. Maksimal 5MB."
+    
+  kartu_keluarga:
+    label: "Kartu Keluarga"
+    step: "documents"
+    type: "file"
+    is_mandatory: true
+    order: 2
+    allowed_extensions: [".pdf", ".jpg", ".jpeg", ".png"]
+    max_size_mb: 5
+    tips: "Scan/foto KK (PDF/JPG/PNG, max 5MB)"
+    prompt_message: |
+      📄 **DOKUMEN 2/6: Kartu Keluarga (KK)**
+      
+      Silakan upload scan/foto **Kartu Keluarga**.
+      
+      ✅ Format: PDF, JPG, atau PNG
+      ✅ Ukuran: Maksimal 5MB
+    success_message: "✅ Kartu Keluarga berhasil diupload!"
+    
+  foto_siswa:
+    label: "Pas Foto Siswa"
+    step: "documents"
+    type: "file"
+    is_mandatory: true
+    order: 3
+    allowed_extensions: [".jpg", ".jpeg", ".png"]
+    max_size_mb: 2
+    tips: "Pas foto 3x4 (JPG/PNG, max 2MB)"
+    prompt_message: |
+      📷 **DOKUMEN 3/6: Pas Foto Siswa**
+      
+      Silakan upload **Pas Foto Siswa** ukuran 3x4.
+      
+      ✅ Format: JPG atau PNG
+      ✅ Ukuran: Maksimal 2MB
+      ✅ Latar belakang merah atau biru
+    success_message: "✅ Pas Foto Siswa berhasil diupload!"
+    
+  ijazah_terakhir:
+    label: "Ijazah/SKL"
+    step: "documents"
+    type: "file"
+    is_mandatory: false
+    order: 4
+    allowed_extensions: [".pdf", ".jpg", ".jpeg", ".png"]
+    max_size_mb: 5
+    tips: "Ijazah atau SKL dari sekolah sebelumnya"
+    prompt_message: |
+      📜 **DOKUMEN 4/6: Ijazah/Surat Keterangan Lulus** (Opsional)
+      
+      Upload **Ijazah** atau **SKL** dari sekolah sebelumnya.
+      
+      💡 Ketik **'skip'** jika tidak ada atau belum tersedia.
+    success_message: "✅ Ijazah berhasil diupload!"
+    
+  rapor_terakhir:
+    label: "Rapor Semester Terakhir"
+    step: "documents"
+    type: "file"
+    is_mandatory: false
+    order: 5
+    allowed_extensions: [".pdf", ".jpg", ".jpeg", ".png"]
+    max_size_mb: 10
+    tips: "Scan rapor semester terakhir"
+    prompt_message: |
+      📚 **DOKUMEN 5/6: Rapor Semester Terakhir** (Opsional)
+      
+      Upload scan **Rapor** semester terakhir.
+      
+      💡 Ketik **'skip'** jika tidak ada.
+    success_message: "✅ Rapor berhasil diupload!"
+    
+  ktp_ortu:
+    label: "KTP Orang Tua"
+    step: "documents"
+    type: "file"
+    is_mandatory: false
+    order: 6
+    allowed_extensions: [".pdf", ".jpg", ".jpeg", ".png"]
+    max_size_mb: 5
+    tips: "KTP Ayah atau Ibu"
+    prompt_message: |
+      🪪 **DOKUMEN 6/6: KTP Orang Tua** (Opsional)
+      
+      Upload **KTP Ayah** atau **KTP Ibu**.
+      
+      💡 Ketik **'skip'** jika tidak tersedia.
+    success_message: "✅ KTP Orang Tua berhasil diupload!"
+
+# -----------------------------------------------------------------------------
+# MESSAGES
+# -----------------------------------------------------------------------------
+messages:
+  welcome: |
+    Halo! Selamat datang di **Pendaftaran Siswa Baru YPI Al-Azhar** 👋
+    
+    Saya akan membantu Anda melalui proses pendaftaran secara bertahap:
+    
+    📋 **Tahapan Pendaftaran:**
+    1️⃣ 🏫 Pilihan Sekolah
+    2️⃣ 👤 Data Siswa
+    3️⃣ 👨‍👩‍👧 Data Orang Tua
+    4️⃣ 📚 Riwayat Akademik & Nilai Rapor
+    5️⃣ 📄 Upload Dokumen
+    6️⃣ ✅ Konfirmasi & Pembayaran
+    
+    💡 **Tips:**
+    - Data Anda **otomatis tersimpan** dan bisa dilanjutkan kapan saja
+    - Ketik **"back"** untuk kembali ke tahap sebelumnya
+    - Ketik **"summary"** untuk melihat ringkasan
+    - Ketik **"help"** untuk bantuan
+    
+    Mari kita mulai! **Sekolah mana yang dituju?**
+    
+  step_transitions:
+    school_selection_to_student_info: |
+      ✅ **Tahap 1 selesai!**
+      
+      Lanjut ke **Tahap 2: Data Siswa**
+      
+      Silakan berikan informasi berikut:
+      - Nama lengkap siswa
+      - Tempat dan tanggal lahir
+      - Jenis kelamin
+      - Alamat lengkap
+      - Nomor telepon
+      
+      💡 Anda bisa menjawab beberapa data sekaligus!
+      
+    student_info_to_parent_info: |
+      ✅ **Tahap 2 selesai!**
+      
+      Lanjut ke **Tahap 3: Data Orang Tua**
+      
+      Silakan berikan informasi ayah dan ibu:
+      - Nama lengkap
+      - Pekerjaan
+      - Nomor telepon
+      
+    parent_info_to_academic_info: |
+      ✅ **Tahap 3 selesai!**
+      
+      Lanjut ke **Tahap 4: Riwayat Akademik**
+      
+      Silakan berikan informasi:
+      - Nama sekolah asal
+      - Tahun lulus
+      - **Nilai rapor terakhir** (Matematika, B. Indonesia, B. Inggris, IPA)
+      - Prestasi akademik (jika ada)
+      
+      💡 Ketik **'skip'** jika siswa belum pernah sekolah.
+      
+    academic_info_to_documents: |
+      ✅ **Tahap 4 selesai!**
+      
+      Lanjut ke **Tahap 5: Upload Dokumen**
+      
+      📋 **Dokumen yang diperlukan:**
+      1. ✅ Akta Kelahiran (wajib)
+      2. ✅ Kartu Keluarga (wajib)
+      3. ✅ Pas Foto Siswa 3x4 (wajib)
+      4. 📋 Ijazah/SKL (opsional)
+      5. 📋 Rapor Terakhir (opsional)
+      6. 📋 KTP Orang Tua (opsional)
+      
+      Dokumen akan diminta **satu per satu** dengan validasi otomatis.
+      
+    documents_to_review: |
+      ✅ **Semua dokumen sudah diupload!**
+      
+      Lanjut ke **Tahap 6: Review & Konfirmasi**
+      
+      Ketik **'summary'** untuk melihat ringkasan lengkap.
+      Ketik **'konfirmasi'** jika data sudah benar.
+      
+  confirmations:
+    field_saved: "✓ {field_label}: {value}"
+    field_updated: "✓ {field_label} diubah: {old_value} → {new_value}"
+    multiple_saved: "✓ Dicatat: {fields}"
+    
+  errors:
+    validation_failed: "❌ {field_label}: {error_message}"
+    session_not_found: "Session tidak ditemukan. Silakan mulai pendaftaran baru."
+    incomplete_data: "Data belum lengkap ({completion}%). Minimal {min_completion}% untuk konfirmasi."
+    
+  prompts:
+    ask_next_field: "Selanjutnya, {field_label}?"
+    ask_with_example: "{field_label}? (Contoh: {example})"
+    can_advance: |
+      ✅ Data tahap ini sudah cukup!
+      
+      Pilihan:
+      - Ketik **'lanjut'** untuk ke tahap berikutnya
+      - Atau lengkapi data lainnya jika ada
+    ask_more_data: |
+      Ada data lain yang ingin ditambahkan?
+      - Ketik data tambahan
+      - Ketik **'lanjut'** jika sudah cukup
+      
+  navigation:
+    back_success: "⬅️ Kembali ke tahap **{step_name}**"
+    back_not_allowed: "Tidak bisa kembali dari tahap ini."
+    step_indicator: "📍 Tahap {current}/{total}: {step_name}"
+    
+  pre_confirmation:
+    review_prompt: |
+      📋 **REVIEW DATA PENDAFTARAN**
+      
+      Silakan periksa kembali data Anda di atas.
+      
+      Pilihan:
+      - Ketik **'ubah [field]'** untuk mengubah data
+      - Ketik **'konfirmasi'** jika semua sudah benar
+      
+    ask_confirmation: |
+      ⚠️ **KONFIRMASI FINAL**
+      
+      Apakah Anda yakin semua data sudah benar?
+      
+      - Ketik **'ya saya yakin'** untuk konfirmasi
+      - Ketik **'belum'** untuk kembali mengedit
+      
+    not_sure: "Baik, silakan periksa dan ubah data yang perlu diperbaiki."
+    
+  reset:
+    ask_confirmation: |
+      ⚠️ **KONFIRMASI RESET**
+      
+      Anda akan menghapus semua data yang sudah diisi.
+      
+      Ketik **'ya hapus'** untuk konfirmasi, atau **'tidak'** untuk batal.
+    confirmed: "🔄 Data berhasil dihapus. Mari mulai dari awal."
+    cancelled: "Baik, data Anda tetap tersimpan."
+    
+  registration_confirmed: |
+    🎉 **PENDAFTARAN BERHASIL!**
+    
+    **Nomor Registrasi:** `{registration_number}`
+    
+    📋 **DATA PENDAFTARAN:**
+    • Nama: {nama_lengkap}
+    • Sekolah: {nama_sekolah}
+    • Tingkatan: {tingkatan}
+    • Program: {program}
+    
+    ---
+    
+    {payment_info}
+    
+    ---
+    
+    💡 **Tips:**
+    • Simpan nomor registrasi Anda
+    • Ketik nomor registrasi kapan saja untuk **cek status**
+    • Kunjungi halaman **/status** untuk tracking lengkap
+    
+    Butuh bantuan? Hubungi:
+    📞 {whatsapp_admin}
+    ✉️ {email_admin}
+    
+    ---
+    
+    Apakah ingin mendaftarkan siswa lain?
+    - Ketik **'daftar baru'**
+    - Ketik **'selesai'** untuk mengakhiri
+    
+  status_check:
+    ask_registration_number: "Silakan masukkan nomor registrasi.\nContoh: `AZHAR-2025-TK-ABC12345`"
+    not_found: |
+      ❌ Nomor registrasi **{registration_number}** tidak ditemukan.
+      
+      Pastikan nomor registrasi sudah benar.
+      Hubungi admin jika memerlukan bantuan: {whatsapp_admin}
+      
+    status_pending_payment: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** ⏳ **Menunggu Pembayaran**
+      
+      ---
+      
+      {payment_info}
+      
+    status_payment_uploaded: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** 📤 **Bukti Pembayaran Diterima**
+      
+      Bukti pembayaran sedang diverifikasi oleh tim kami.
+      Proses verifikasi: 1-2 hari kerja.
+      
+    status_payment_verified: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** ✅ **Pembayaran Terverifikasi**
+      
+      Dokumen sedang direview. Mohon tunggu informasi selanjutnya.
+      
+    status_documents_review: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** 📝 **Dokumen Sedang Direview**
+      
+      Tim kami sedang memeriksa kelengkapan dokumen.
+      
+    status_approved: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** 🎉 **PENDAFTARAN DISETUJUI**
+      
+      Selamat! Pendaftaran Anda telah disetujui.
+      Informasi selanjutnya akan dikirim via email/WhatsApp.
+      
+    status_rejected: |
+      📋 **STATUS PENDAFTARAN**
+      
+      **Nomor Registrasi:** `{registration_number}`
+      **Nama Siswa:** {nama_lengkap}
+      **Status:** ❌ **Pendaftaran Ditolak**
+      
+      Mohon maaf, pendaftaran tidak dapat diproses.
+      Hubungi admin untuk info lebih lanjut: {whatsapp_admin}
+
+# -----------------------------------------------------------------------------
+# PAYMENT INFO (Biaya Pendaftaran)
+# -----------------------------------------------------------------------------
+payment_info:
+  biaya_pendaftaran:
+    TK: 500000
+    SD: 750000
+    SMP: 1000000
+    SMA: 1000000
+    default: 500000
+    
+  payment_method:
+    type: "bank_transfer"
+    bank_transfer:
+      enabled: true
+      bank_name: "Bank Mandiri"
+      account_number: "123-456-789-0000"
+      account_name: "YPI Al-Azhar"
+    virtual_account:
+      enabled: false
+      provider: "midtrans"
+      
+  payment_deadline_days: 3
+  
+  payment_message_template: |
+    💳 **INFORMASI PEMBAYARAN**
+    
+    **Biaya Pendaftaran:** {biaya}
+    **Batas Waktu:** {deadline}
+    
+    **Transfer ke:**
+    🏦 {bank_name}
+    📝 No. Rekening: {account_number}
+    👤 Atas Nama: {account_name}
+    
+    ⚠️ **Penting:** Cantumkan `{registration_number}` pada berita transfer
+    
+  registration_status:
+    pending_payment: "Menunggu Pembayaran"
+    payment_uploaded: "Bukti Pembayaran Diterima"
+    payment_verified: "Pembayaran Terverifikasi"
+    documents_review: "Dokumen Sedang Direview"
+    approved: "Pendaftaran Disetujui"
+    rejected: "Pendaftaran Ditolak"
+
+# -----------------------------------------------------------------------------
+# COMMANDS
+# -----------------------------------------------------------------------------
+commands:
+  advance:
+    keywords: ["lanjut", "next", "skip", "lewati", "lanjutkan"]
+    
+  back:
+    keywords: ["back", "kembali", "sebelumnya", "mundur"]
+    
+  summary:
+    keywords: ["summary", "ringkasan", "lihat data", "data saya"]
+    
+  edit:
+    pattern: "(ubah|ganti|edit|koreksi|perbaiki)\\s+(.+)"
+    
+  confirm:
+    keywords: ["konfirmasi", "confirm", "selesai", "submit"]
+    
+  confirm_yes:
+    keywords: ["ya saya yakin", "ya yakin", "yakin", "iya yakin"]
+    
+  confirm_no:
+    keywords: ["belum", "tidak yakin", "ragu", "cancel"]
+    
+  reset:
+    keywords: ["ulang", "reset", "hapus semua", "mulai ulang"]
+    
+  reset_confirm:
+    keywords: ["ya hapus", "ya reset", "hapus", "iya hapus"]
+    
+  reset_cancel:
+    keywords: ["tidak", "jangan", "batal", "cancel"]
+    
+  new_registration:
+    keywords: ["daftar baru", "daftar lagi", "pendaftaran baru"]
+    
+  done:
+    keywords: ["selesai", "done", "exit", "keluar", "cukup"]
+    
+  help:
+    keywords: ["help", "bantuan", "tolong", "cara"]
+    
+  check_status:
+    keywords: ["cek status", "status", "AZHAR-"]
+    
+  example:
+    pattern: "(contoh|format|gimana|bagaimana)\\s*(.*)"
+
+# -----------------------------------------------------------------------------
+# CONTACT INFO
+# -----------------------------------------------------------------------------
+contact_info:
+  whatsapp_admin: "0812-3456-7890"
+  email_admin: "pendaftaran@ypiaalazhar.sch.id"
+  website: "https://ypiaalazhar.sch.id"

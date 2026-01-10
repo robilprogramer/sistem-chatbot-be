@@ -1,0 +1,20 @@
+uvicorn main:app --reload
+uvicorn main:app --reload --port 8001
+
+# Init PostgreSQL tables
+python sync_service.py init
+
+# Check status
+python sync_service.py status
+
+# Sync all
+python sync_service.py sync-all
+
+# Sync specific registration
+python sync_service.py sync AZHAR-2025-TK-XXXXXXXX
+
+# Start scheduler daemon
+python scheduler.py start
+
+Instal Dari Lokal
+-pip install --no-index --find-links="C:\Robil Dev\Skripsi\v1-chatbot\v1-chatbot\packages" langchain_text_splitters

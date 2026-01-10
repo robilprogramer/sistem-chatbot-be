@@ -1,0 +1,135 @@
+# General Settings
+app:
+  name: "YPI Al-Azhar RAG Chatbot"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+  
+# Chatbot Modes
+modes:
+  default: "informational"  # informational or transactional
+
+
+# OCR Configuration
+ocr:
+  method: "unstructured"  # unstructured, tesseract, paddle, pymupdf
+  unstructured:
+    strategy: "hi_res"  # hi_res, fast, ocr_only, auto
+    extract_images: true
+    extract_tables: true
+  tesseract:
+    lang: "ind+eng"
+    config: "--psm 6"
+  paddle:
+    lang: "en"
+    use_angle_cls: true
+
+# Chunking Configuration
+chunking:
+  strategy: "semantic"  # fixed_size or semantic
+  fixed_size:
+    chunk_size: 1000
+    chunk_overlap: 200
+    separators: ["\n\n", "\n", ".", " ", ""]
+  semantic:
+    breakpoint_threshold_type: "percentile"
+    breakpoint_threshold: 95
+
+# Embedding Configuration
+embeddings:
+  model: "openai"  # openai or huggingface
+  openai:
+    model_name: "text-embedding-3-small"
+    dimensions: 1536
+  huggingface:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+    dimensions: 384
+    device: "cpu"  # cpu or cuda
+
+# ============================================================================
+# RETRIEVAL CONFIGURATION - WITH RERANKER
+# ============================================================================
+retrieval:
+  method: "semantic"  # dense, bm25, or hybrid
+  top_k: 5  # Ambil lebih banyak untuk di-rerank (jika reranker enabled)
+  similarity_threshold: 0.7  # Filter by similarity (0-1)
+  hybrid:
+    dense_weight: 0.7
+    bm25_weight: 0.3
+  
+  # ===========================================================================
+  # RERANKER CONFIGURATION
+  # ===========================================================================
+  # Reranker akan mengurutkan ulang hasil retrieval berdasarkan relevansi
+  # Keuntungan: Hasil lebih akurat dan relevan
+  # Kekurangan: Sedikit lebih lambat (+100-200ms)
+  reranker:
+    enabled: false  # Set true untuk mengaktifkan reranker
+    model: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # Model reranker
+    top_n: 5  # Jumlah dokumen setelah rerank (final results)
+    
+    # Model alternatif (pilih salah satu):
+    # - "cross-encoder/ms-marco-MiniLM-L-6-v2" (fast, good quality)
+    # - "cross-encoder/ms-marco-MiniLM-L-12-v2" (slower, better quality)
+    # - "BAAI/bge-reranker-base" (multilingual, bagus untuk Indonesia)
+    # - "BAAI/bge-reranker-large" (best quality, slowest)
+
+# Vector Database
+vectordb:
+  type: "chroma"
+  chroma:
+    collection_name: "ypi_knowledge_base"
+    persist_directory: "data/chroma_db"
+    distance_function: "cosine"
+
+# ============================================================================
+# LLM Configuration
+# ============================================================================
+llm:
+  provider: "openai"  # openai, gemini, atau ollama
+  
+  openai:
+    model: "gpt-4o-mini"
+    temperature: 0
+    max_tokens: 1024
+    streaming: true
+    vision_model: "gpt-4o-mini"
+    
+  gemini:
+    model: "gemini-2.0-flash"
+    temperature: 0
+    max_tokens: 1024
+    vision_model: "gemini-2.0-flash"
+    
+  ollama:
+    model: "llama3"
+    temperature: 0
+    max_tokens: 1024
+    vision_model: "llama3.2-vision"
+    # Tambahan untuk Ollama agar jawab dalam Bahasa Indonesia
+    system_prompt_prefix: "PENTING: Selalu jawab dalam Bahasa Indonesia."
+  
+# Database Configuration
+database:
+  type: "postgresql"
+  host: "${DB_HOST}"
+  port: "${DB_PORT}"
+  name: "${DB_NAME}"
+  user: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/chatbot.log"
+  max_bytes: 10485760
+  backup_count: 5
+
+# Performance
+performance:
+  max_concurrent_requests: 100
+  timeout: 30
+  cache_enabled: true
+  cache_ttl: 3600
+

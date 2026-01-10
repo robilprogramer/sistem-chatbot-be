@@ -1,0 +1,270 @@
+# ============================================================================
+# FILE: utils/enhanced_chunker.py
+# ============================================================================
+"""
+Enhanced Chunker with Metadata Preservation
+Setiap chunk akan memiliki metadata lengkap
+"""
+
+import time
+from dataclasses import dataclass
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_experimental.text_splitter import SemanticChunker
+from langchain_openai import OpenAIEmbeddings
+import yaml
+from typing import List, Dict, Any
+
+
+
+
+class EnhancedChunker:
+    """
+    Enhanced Text Chunker dengan Metadata Preservation
+    
+    Features:
+    - Preserve metadata di setiap chunk
+    - Track chunk position (index/total)
+    - Add source tracking
+    - Customizable separators
+    """
+    
+    def __init__(self,config_path: str):
+        self.config = self._load_config(config_path)
+        self.chunking_cfg = self.config.get("chunking", {})
+        self.strategy = self.chunking_cfg.get("strategy", "fixed_size")
+        self.splitter = self._build_splitter()
+    # ------------------------------------------------------------------------
+    # CONFIG
+    # ------------------------------------------------------------------------
+    def _load_config(self, path: str) -> Dict[str, Any]:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+
+    # ------------------------------------------------------------------------
+    # SPLITTER FACTORY
+    # ------------------------------------------------------------------------
+    def _build_splitter(self):
+        if self.strategy == "fixed_size":
+            return self._build_fixed_size_splitter()
+
+        elif self.strategy == "semantic":
+            return self._build_semantic_splitter()
+
+        else:
+            raise ValueError(f"Unknown chunking strategy: {self.strategy}") 
+           
+    def _build_fixed_size_splitter(self):
+        cfg = self.chunking_cfg.get("fixed_size", {})
+        chunk_size = cfg.get("chunk_size", 1000)
+        chunk_overlap = cfg.get("chunk_overlap", 200)
+        separators = cfg.get("separators", ["\n\n", "\n", " ", ""])
+        return RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            separators=separators,
+            length_function=len,
+        )
+
+    def _build_semantic_splitter(self):
+        cfg = self.chunking_cfg.get("semantic", {})
+        breakpoint_threshold_type = cfg.get("breakpoint_threshold_type", "percentile")
+        breakpoint_threshold_amount = cfg.get("breakpoint_threshold", 95)
+
+        embeddings = OpenAIEmbeddings() if self.strategy == "semantic" else None
+
+        return SemanticChunker(
+            embeddings=embeddings,
+            breakpoint_threshold_type=breakpoint_threshold_type,
+            breakpoint_threshold_amount=breakpoint_threshold_amount,
+        )
+    def chunk_with_metadata(
+        self,
+        content: str,
+        metadata: Dict[str, str]
+    ) -> List[Document]:
+        """
+        Chunk text dan attach metadata ke setiap chunk
+        
+        Args:
+            content: Text content to chunk
+            metadata: Metadata dict (jenjang, cabang, tahun, dll)
+            
+        Returns:
+            List of LangChain Document objects with metadata
+        """
+        if not content or not content.strip():
+            return []
+        
+        # Split into chunks
+        chunks = self.splitter.split_text(content)
+        
+        # Create Document objects with metadata
+        documents: List[Document] = []
+        for idx, chunk in enumerate(chunks):
+            chunk_metadata = metadata.copy()
+
+            chunk_metadata.update({
+                "chunk_index": idx,
+                "total_chunks": len(chunks),
+                "chunk_id": f"{metadata.get('source', 'doc')}_{idx}",
+                "chunk_strategy": self.strategy,
+            })
+
+            documents.append(
+                Document(
+                    id=f"{metadata.get('source', 'doc')}_{idx}",
+                    page_content=chunk,
+                    metadata=chunk_metadata,
+                )
+            )
+
+        return documents
+    
+    def chunk_multiple_documents(
+        self,
+        documents: List[Dict[str, any]]
+    ) -> List[Document]:
+        """
+        Chunk multiple documents dengan metadata masing-masing
+        
+        Args:
+            documents: List of dicts dengan keys 'content' dan 'metadata'
+            
+        Returns:
+            List of all Document chunks from all documents
+        """
+        all_chunks: List[Document] = []
+        
+        for doc in documents:
+            content = doc.get("content", "")
+            metadata = doc.get("metadata", {})
+
+            all_chunks.extend(
+                self.chunk_with_metadata(content, metadata)
+            )
+
+        return all_chunks
+    
+    def get_statistics(self, documents: List[Document]) -> Dict[str, Any]:
+        if not documents:
+            return {"total_chunks": 0}
+
+        lengths = [len(doc.page_content) for doc in documents]
+
+        sources = {}
+        jenjang = {}
+
+        for doc in documents:
+            src = doc.metadata.get("source", "Unknown")
+            lvl = doc.metadata.get("jenjang", "Unknown")
+
+            sources[src] = sources.get(src, 0) + 1
+            jenjang[lvl] = jenjang.get(lvl, 0) + 1
+
+        return {
+            "strategy": self.strategy,
+            "total_chunks": len(documents),
+            "avg_length": int(sum(lengths) / len(lengths)),
+            "min_length": min(lengths),
+            "max_length": max(lengths),
+            "total_chars": sum(lengths),
+            "sources": sources,
+            "jenjang_distribution": jenjang,
+        }
+
+
+# ============================================================================
+# DOCUMENT PROCESSOR - Process dokumen dengan metadata
+# ============================================================================
+
+class DocumentProcessor:
+    """
+    Process dokumen dengan extract metadata dan chunking
+    """
+    
+    def __init__(
+        self,
+        chunker: EnhancedChunker,
+        metadata_extractor
+    ):
+        self.chunker = chunker
+        self.metadata_extractor = metadata_extractor
+    
+    def process_document(
+        self,
+        filename: str,
+        content: str
+    ) -> List[Document]:
+        """
+        Process single document
+        
+        Args:
+            filename: Nama file
+            content: Content dokumen (hasil parsing)
+            
+        Returns:
+            List of Document chunks dengan metadata
+        """
+        print(f"\n📄 Processing: {filename}")
+        
+        # Extract metadata
+        metadata = self.metadata_extractor.extract_full(filename, content)
+        
+        print(f"   ✅ Metadata extracted:")
+        for k, v in metadata.items():
+            print(f"      {k}: {v}")
+        
+        # Chunk dengan metadata
+        chunks = self.chunker.chunk_with_metadata(content, metadata)
+        
+        print(f"   ✂️ Created {len(chunks)} chunks")
+        
+        return chunks
+    
+    def process_multiple_documents(
+        self,
+        documents: List[Dict[str, str]]
+    ) -> List[Document]:
+        """
+        Process multiple documents
+        
+        Args:
+            documents: List of dicts dengan 'filename' dan 'content'
+            
+        Returns:
+            All chunks from all documents
+        """
+        print(f"\n{'='*80}")
+        print(f"📚 PROCESSING {len(documents)} DOCUMENTS")
+        print(f"{'='*80}")
+        
+        all_chunks = []
+        
+        for doc in documents:
+            filename = doc.get('filename', 'Unknown.pdf')
+            content = doc.get('content', '')
+            
+            chunks = self.process_document(filename, content)
+            print(chunks)
+            all_chunks.extend(chunks)
+        
+        print(all_chunks)
+        # Statistics
+        stats = self.chunker.get_statistics(all_chunks)
+        
+        print(f"\n{'='*80}")
+        print("📊 PROCESSING SUMMARY")
+        print(f"{'='*80}")
+        print(f"Total chunks: {stats['total_chunks']}")
+        print(f"Avg length: {stats['avg_length']} chars")
+        print(f"\n📁 By Source:")
+        for src, count in stats['sources'].items():
+            print(f"   {src}: {count} chunks")
+        print(f"\n🎓 By Jenjang:")
+        for jenjang, count in stats['jenjang_distribution'].items():
+            print(f"   {jenjang}: {count} chunks")
+        print(f"{'='*80}\n")
+        
+        return all_chunks
+
