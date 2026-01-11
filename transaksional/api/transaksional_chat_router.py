@@ -41,10 +41,11 @@ class ChatResponse(BaseModel):
 async def chat(
     session_id: Optional[str] = Form(None),
     message: str = Form(...),
-    file: Optional[UploadFile] = File(None)
+    file: Optional[UploadFile] = File(None),
+    user_id: str = Form(...)
 ):
     """Process chat message with optional file upload."""
-    print(f"Received message: {message} | Session ID: {session_id}")
+    print(f"Received message: {message} | Session ID: {session_id}",user_id)
     if not session_id:
         session_id = str(uuid.uuid4())
     
@@ -70,7 +71,7 @@ async def chat(
     
     try:
         chat_handler = get_chat_handler()
-        result = await chat_handler.process_message(session_id, message, file_path, file_info)
+        result = await chat_handler.process_message(session_id, message, file_path, file_info,user_id)
         
         try:
             db = get_db_manager()

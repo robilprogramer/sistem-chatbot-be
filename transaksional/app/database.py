@@ -11,6 +11,7 @@ class DatabaseManager:
         self.db_path = db_path
         os.makedirs(os.path.dirname(db_path) if os.path.dirname(db_path) else ".", exist_ok=True)
         self._init_db()
+        self._run_migrations()
     
     @contextmanager
     def get_connection(self):
@@ -29,11 +30,12 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
-            # Registrations table - support draft
+            # Registrations table - support draft + user_id
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS registrations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT UNIQUE NOT NULL,
+                    user_id TEXT,
                     registration_number TEXT UNIQUE,
                     status TEXT DEFAULT 'draft',
                     current_step TEXT,
@@ -93,18 +95,63 @@ class DatabaseManager:
                 )
             """)
             
+            # Migrations tracking table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS migrations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    migration_name TEXT UNIQUE NOT NULL,
+                    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_session ON registrations(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_number ON registrations(registration_number)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_status ON registrations(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_user_id ON registrations(user_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_session ON documents(session_id)")
+    
+    def _run_migrations(self):
+        """Run pending migrations"""
+        migrations = [
+            ("001_add_user_id", self._migrate_add_user_id),
+        ]
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            for migration_name, migration_func in migrations:
+                # Check if migration already applied
+                cursor.execute(
+                    "SELECT id FROM migrations WHERE migration_name = ?", 
+                    (migration_name,)
+                )
+                if cursor.fetchone() is None:
+                    # Run migration
+                    migration_func(cursor)
+                    # Mark as applied
+                    cursor.execute(
+                        "INSERT INTO migrations (migration_name) VALUES (?)",
+                        (migration_name,)
+                    )
+                    print(f"✅ Migration applied: {migration_name}")
+    
+    def _migrate_add_user_id(self, cursor):
+        """Migration: Add user_id column to registrations table"""
+        # Check if column exists
+        cursor.execute("PRAGMA table_info(registrations)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'user_id' not in columns:
+            cursor.execute("ALTER TABLE registrations ADD COLUMN user_id TEXT")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_user_id ON registrations(user_id)")
     
     # =========================================================================
     # DRAFT MANAGEMENT
     # =========================================================================
     
     def save_draft(self, session_id: str, current_step: str, raw_data: Dict, 
-                   completion_percentage: float) -> bool:
+                   completion_percentage: float, user_id: str = None) -> bool:
         """Save or update draft registration"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -121,17 +168,18 @@ class DatabaseManager:
                         current_step = ?,
                         completion_percentage = ?,
                         raw_data = ?,
+                        user_id = COALESCE(?, user_id),
                         updated_at = CURRENT_TIMESTAMP,
                         expires_at = ?
                     WHERE session_id = ?
                 """, (current_step, completion_percentage, json.dumps(raw_data), 
-                      expires_at, session_id))
+                      user_id, expires_at, session_id))
             else:
                 cursor.execute("""
                     INSERT INTO registrations 
-                    (session_id, status, current_step, completion_percentage, raw_data, expires_at)
-                    VALUES (?, 'draft', ?, ?, ?, ?)
-                """, (session_id, current_step, completion_percentage, 
+                    (session_id, user_id, status, current_step, completion_percentage, raw_data, expires_at)
+                    VALUES (?, ?, 'draft', ?, ?, ?, ?)
+                """, (session_id, user_id, current_step, completion_percentage, 
                       json.dumps(raw_data), expires_at))
             
             return True
@@ -150,6 +198,7 @@ class DatabaseManager:
             if row:
                 return {
                     "session_id": row["session_id"],
+                    "user_id": row["user_id"],
                     "current_step": row["current_step"],
                     "completion_percentage": row["completion_percentage"],
                     "raw_data": json.loads(row["raw_data"]) if row["raw_data"] else {},
@@ -158,11 +207,33 @@ class DatabaseManager:
                 }
             return None
     
+    def get_drafts_by_user(self, user_id: str) -> List[Dict]:
+        """Get all drafts for a user"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM registrations 
+                WHERE user_id = ? AND status = 'draft'
+                AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+                ORDER BY updated_at DESC
+            """, (user_id,))
+            rows = cursor.fetchall()
+            
+            return [{
+                "session_id": row["session_id"],
+                "user_id": row["user_id"],
+                "current_step": row["current_step"],
+                "completion_percentage": row["completion_percentage"],
+                "raw_data": json.loads(row["raw_data"]) if row["raw_data"] else {},
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"]
+            } for row in rows]
+    
     # =========================================================================
     # REGISTRATION MANAGEMENT
     # =========================================================================
     
-    def save_registration(self, session, registration_number: str) -> bool:
+    def save_registration(self, session, registration_number: str, user_id: str = None) -> bool:
         """Convert draft to confirmed registration"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -178,29 +249,33 @@ class DatabaseManager:
             }
             
             # Check if draft exists
-            cursor.execute("SELECT id FROM registrations WHERE session_id = ?", 
+            cursor.execute("SELECT id, user_id FROM registrations WHERE session_id = ?", 
                           (session.session_id,))
             exists = cursor.fetchone()
+            
+            # Use existing user_id if not provided
+            final_user_id = user_id or (exists["user_id"] if exists else None)
             
             if exists:
                 cursor.execute("""
                     UPDATE registrations SET
                         registration_number = ?,
+                        user_id = COALESCE(?, user_id),
                         status = 'pending_payment',
                         raw_data = ?,
                         student_data = ?,
                         confirmed_at = CURRENT_TIMESTAMP,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE session_id = ?
-                """, (registration_number, json.dumps(session.raw_data),
+                """, (registration_number, final_user_id, json.dumps(session.raw_data),
                       json.dumps(student_data), session.session_id))
             else:
                 cursor.execute("""
                     INSERT INTO registrations 
-                    (session_id, registration_number, status, current_step, 
+                    (session_id, user_id, registration_number, status, current_step, 
                      completion_percentage, raw_data, student_data, confirmed_at)
-                    VALUES (?, ?, 'pending_payment', ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """, (session.session_id, registration_number, session.current_step,
+                    VALUES (?, ?, ?, 'pending_payment', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (session.session_id, final_user_id, registration_number, session.current_step,
                       100, json.dumps(session.raw_data), json.dumps(student_data)))
             
             # Update documents with registration number
@@ -242,6 +317,7 @@ class DatabaseManager:
                 return {
                     "registration_number": row["registration_number"],
                     "session_id": row["session_id"],
+                    "user_id": row["user_id"],
                     "status": row["status"],
                     "current_step": row["current_step"],
                     "completion_percentage": row["completion_percentage"],
@@ -266,6 +342,7 @@ class DatabaseManager:
                 return {
                     "registration_number": row["registration_number"],
                     "session_id": row["session_id"],
+                    "user_id": row["user_id"],
                     "status": row["status"],
                     "current_step": row["current_step"],
                     "completion_percentage": row["completion_percentage"],
@@ -275,6 +352,40 @@ class DatabaseManager:
                     "updated_at": row["updated_at"]
                 }
             return None
+    
+    def get_registrations_by_user(self, user_id: str, status: str = None) -> List[Dict]:
+        """Get all registrations for a user"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            if status:
+                cursor.execute("""
+                    SELECT * FROM registrations 
+                    WHERE user_id = ? AND status = ?
+                    ORDER BY updated_at DESC
+                """, (user_id, status))
+            else:
+                cursor.execute("""
+                    SELECT * FROM registrations 
+                    WHERE user_id = ?
+                    ORDER BY updated_at DESC
+                """, (user_id,))
+            
+            rows = cursor.fetchall()
+            
+            return [{
+                "registration_number": row["registration_number"],
+                "session_id": row["session_id"],
+                "user_id": row["user_id"],
+                "status": row["status"],
+                "current_step": row["current_step"],
+                "completion_percentage": row["completion_percentage"],
+                "raw_data": json.loads(row["raw_data"]) if row["raw_data"] else {},
+                "student_data": json.loads(row["student_data"]) if row["student_data"] else {},
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "confirmed_at": row["confirmed_at"]
+            } for row in rows]
     
     def update_registration_status(self, registration_number: str, status: str, 
                                    notes: str = None, changed_by: str = "system") -> bool:
@@ -302,6 +413,16 @@ class DatabaseManager:
                                    changed_by, notes)
             
             return True
+    
+    def update_registration_user(self, session_id: str, user_id: str) -> bool:
+        """Update user_id for a registration"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE registrations SET user_id = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE session_id = ?
+            """, (user_id, session_id))
+            return cursor.rowcount > 0
     
     def _log_status_change(self, cursor, registration_number: str, old_status: str,
                           new_status: str, changed_by: str, notes: str):
@@ -409,30 +530,46 @@ class DatabaseManager:
     # TRACKING & STATISTICS
     # =========================================================================
     
-    def get_registration_stats(self) -> Dict:
-        """Get registration statistics"""
+    def get_registration_stats(self, user_id: str = None) -> Dict:
+        """Get registration statistics, optionally filtered by user"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             
+            user_filter = "WHERE user_id = ?" if user_id else ""
+            params = (user_id,) if user_id else ()
+            
             # Count by status
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT status, COUNT(*) as count FROM registrations
+                {user_filter}
                 GROUP BY status
-            """)
+            """, params)
             status_counts = {row["status"]: row["count"] for row in cursor.fetchall()}
             
             # Today's registrations
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM registrations
-                WHERE DATE(created_at) = DATE('now')
-            """)
+            if user_id:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM registrations
+                    WHERE user_id = ? AND DATE(created_at) = DATE('now')
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM registrations
+                    WHERE DATE(created_at) = DATE('now')
+                """)
             today = cursor.fetchone()["count"]
             
             # This week
-            cursor.execute("""
-                SELECT COUNT(*) as count FROM registrations
-                WHERE created_at >= DATE('now', '-7 days')
-            """)
+            if user_id:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM registrations
+                    WHERE user_id = ? AND created_at >= DATE('now', '-7 days')
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM registrations
+                    WHERE created_at >= DATE('now', '-7 days')
+                """)
             this_week = cursor.fetchone()["count"]
             
             return {

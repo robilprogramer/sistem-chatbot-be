@@ -50,7 +50,7 @@ class ChatHandler:
         self.llm: BaseLLMClient = get_llm()
     
     async def process_message(self, session_id: str, user_message: str, 
-                              file_path: str = None, file_info: Dict = None) -> ChatResult:
+                              file_path: str = None, file_info: Dict = None,user_id: str= None ) -> ChatResult:
         session = self._get_or_create_session(session_id)
         session.add_message("user", user_message)
         
@@ -66,7 +66,7 @@ class ChatHandler:
         elif current_phase == ConversationPhase.UPLOADING_DOCUMENTS.value:
             result = await self._handle_document_phase(session, user_message, file_path, file_info)
         elif current_phase == ConversationPhase.AWAITING_CONFIRM.value:
-            result = await self._handle_confirmation_response(session, user_message)
+            result = await self._handle_confirmation_response(session, user_message,user_id)
         elif current_phase == ConversationPhase.AWAITING_RESET.value:
             result = await self._handle_reset_response(session, user_message)
         elif current_phase == ConversationPhase.ASK_NEW_REGISTRATION.value:
@@ -261,15 +261,15 @@ class ChatHandler:
         session.raw_data["_phase"] = ConversationPhase.AWAITING_CONFIRM.value
         return self._build_result(session, f"{summary}\n\n---\n\n⚠️ **KONFIRMASI FINAL**\n\nKetik **'ya saya yakin'** untuk konfirmasi.")
 
-    async def _handle_confirmation_response(self, session: SessionState, user_message: str) -> ChatResult:
+    async def _handle_confirmation_response(self, session: SessionState, user_message: str, user_id: str) -> ChatResult:
         msg_lower = user_message.lower().strip()
         if any(k in msg_lower for k in ["ya saya yakin", "ya yakin", "yakin", "ya", "iya"]):
-            return await self._process_registration(session)
+            return await self._process_registration(session, user_id)
         else:
             session.raw_data["_phase"] = ConversationPhase.COLLECTING.value
             return self._build_result(session, "Baik, silakan periksa data Anda.\n\nKetik **'summary'** untuk lihat data atau langsung ubah data yang salah.")
 
-    async def _process_registration(self, session: SessionState) -> ChatResult:
+    async def _process_registration(self, session: SessionState, user_id: str) -> ChatResult:
         import uuid
         year = datetime.now().year
         tingkatan = session.get_field("tingkatan") or ""
@@ -288,7 +288,7 @@ class ChatHandler:
         try:
             from  transaksional.app.database import get_db_manager
             db = get_db_manager()
-            db.save_registration(session, registration_number)
+            db.save_registration(session, registration_number,user_id)
         except Exception as e:
             print(f"DB save error: {e}")
         
