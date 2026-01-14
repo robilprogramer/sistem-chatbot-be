@@ -91,25 +91,232 @@ fields:
     type: "select"
     is_mandatory: true
     options:
+      # TK
       - value: "TK Islam Al Azhar 1 Kebayoran Baru"
         label: "TK Islam Al Azhar 1 Kebayoran Baru"
         aliases: ["tk azhar kebayoran", "tk 1", "tk kebayoran"]
-      - value: "TK AL AZHAR CITRA RAYA TANGGERANG"
-        label: "TK AL AZHAR CITRA RAYA TANGGERANG"
-        aliases: ["tk azhar tanggerang", "tk citra raya", "tk tanggerang"]  
+      - value: "TK Al Azhar Citra Raya Tangerang"
+        label: "TK Al Azhar Citra Raya Tangerang"
+        aliases: ["tk azhar tangerang", "tk citra raya", "tk tangerang"]
+      
+      # SD Islam Al Azhar
       - value: "SD Islam Al Azhar 1 Kebayoran Baru"
         label: "SD Islam Al Azhar 1 Kebayoran Baru"
-        aliases: ["sd azhar kebayoran", "sd 1", "sd kebayoran"]
+        aliases: ["sd azhar kebayoran", "sd 1", "sd kebayoran", "sd azhar 1"]
+      - value: "SD Islam Al Azhar 2 Pasar Minggu"
+        label: "SD Islam Al Azhar 2 Pasar Minggu"
+        aliases: ["sd azhar pasar minggu", "sd 2", "sd pasar minggu"]
+      - value: "SD Islam Al Azhar 3 Cirebon"
+        label: "SD Islam Al Azhar 3 Cirebon"
+        aliases: ["sd azhar cirebon", "sd 3", "sd cirebon"]
+      - value: "SD Islam Al Azhar 4 Kebayoran Lama"
+        label: "SD Islam Al Azhar 4 Kebayoran Lama"
+        aliases: ["sd azhar kebayoran lama", "sd 4", "sd kebayoran lama"]
+      - value: "SD Islam Al Azhar 5 Kemandoran"
+        label: "SD Islam Al Azhar 5 Kemandoran"
+        aliases: ["sd azhar kemandoran", "sd 5", "sd kemandoran"]
+      - value: "SD Islam Al Azhar 6 Jakapermai Bekasi"
+        label: "SD Islam Al Azhar 6 Jakapermai Bekasi"
+        aliases: ["sd azhar jakapermai", "sd 6", "sd jakapermai"]
+      - value: "SD Islam Al Azhar 7 Sukabumi"
+        label: "SD Islam Al Azhar 7 Sukabumi"
+        aliases: ["sd azhar sukabumi", "sd 7", "sd sukabumi"]
+      - value: "SD Islam Al Azhar 8 Kembangan"
+        label: "SD Islam Al Azhar 8 Kembangan"
+        aliases: ["sd azhar kembangan", "sd 8", "sd kembangan"]
+      - value: "SD Islam Al Azhar 9 Kemang Pratama Bekasi"
+        label: "SD Islam Al Azhar 9 Kemang Pratama Bekasi"
+        aliases: ["sd azhar kemang pratama", "sd 9", "sd kemang pratama"]
+      - value: "SD Islam Al Azhar 10 Serang"
+        label: "SD Islam Al Azhar 10 Serang"
+        aliases: ["sd azhar serang", "sd 10", "sd serang"]
+      - value: "SD Islam Al Azhar 11 Surabaya"
+        label: "SD Islam Al Azhar 11 Surabaya"
+        aliases: ["sd azhar surabaya 11", "sd 11", "sd surabaya 11"]
+      - value: "SD Islam Al Azhar 12 Cikarang Bekasi"
+        label: "SD Islam Al Azhar 12 Cikarang Bekasi"
+        aliases: ["sd azhar cikarang", "sd 12", "sd cikarang"]
+      - value: "SD Islam Al Azhar 13 Rawamangun"
+        label: "SD Islam Al Azhar 13 Rawamangun"
+        aliases: ["sd azhar rawamangun", "sd 13", "sd rawamangun"]
+      - value: "SD Islam Al Azhar 14 Semarang"
+        label: "SD Islam Al Azhar 14 Semarang"
+        aliases: ["sd azhar semarang 14", "sd 14", "sd semarang 14"]
+      - value: "SD Islam Al Azhar 15 Pamulang"
+        label: "SD Islam Al Azhar 15 Pamulang"
+        aliases: ["sd azhar pamulang", "sd 15", "sd pamulang"]
+      - value: "SD Islam Al Azhar 16 Cilacap"
+        label: "SD Islam Al Azhar 16 Cilacap"
+        aliases: ["sd azhar cilacap", "sd 16", "sd cilacap"]
+      - value: "SD Islam Al Azhar 17 Bintaro"
+        label: "SD Islam Al Azhar 17 Bintaro"
+        aliases: ["sd azhar bintaro", "sd 17", "sd bintaro"]
+      - value: "SD Islam Al Azhar 18 Cianjur"
+        label: "SD Islam Al Azhar 18 Cianjur"
+        aliases: ["sd azhar cianjur", "sd 18", "sd cianjur"]
+      - value: "SD Islam Al Azhar 19 Sentra Primer"
+        label: "SD Islam Al Azhar 19 Sentra Primer"
+        aliases: ["sd azhar sentra primer", "sd 19", "sd sentra primer"]
+      - value: "SD Islam Al Azhar 20 Cibubur"
+        label: "SD Islam Al Azhar 20 Cibubur"
+        aliases: ["sd azhar cibubur", "sd 20", "sd cibubur"]
+      - value: "SD Islam Al Azhar 21 Pontianak"
+        label: "SD Islam Al Azhar 21 Pontianak"
+        aliases: ["sd azhar pontianak", "sd 21", "sd pontianak"]
+      - value: "SD Islam Al Azhar 22 Salatiga"
+        label: "SD Islam Al Azhar 22 Salatiga"
+        aliases: ["sd azhar salatiga", "sd 22", "sd salatiga"]
+      - value: "SD Islam Al Azhar 23 Jatikramat"
+        label: "SD Islam Al Azhar 23 Jatikramat"
+        aliases: ["sd azhar jatikramat", "sd 23", "sd jatikramat"]
+      - value: "SD Islam Al Azhar 25 Semarang"
+        label: "SD Islam Al Azhar 25 Semarang"
+        aliases: ["sd azhar semarang 25", "sd 25", "sd semarang 25"]
+      - value: "SD Islam Al Azhar 26 Cisolok Sukabumi"
+        label: "SD Islam Al Azhar 26 Cisolok Sukabumi"
+        aliases: ["sd azhar cisolok", "sd 26", "sd cisolok"]
+      - value: "SD Islam Al Azhar 27 Cibinong Bogor"
+        label: "SD Islam Al Azhar 27 Cibinong Bogor"
+        aliases: ["sd azhar cibinong", "sd 27", "sd cibinong"]
+      - value: "SD Islam Al Azhar 28 Solo Baru"
+        label: "SD Islam Al Azhar 28 Solo Baru"
+        aliases: ["sd azhar solo baru", "sd 28", "sd solo baru"]
+      - value: "SD Islam Al Azhar 29 BSB Semarang"
+        label: "SD Islam Al Azhar 29 BSB Semarang"
+        aliases: ["sd azhar bsb", "sd 29", "sd bsb semarang"]
+      - value: "SD Islam Al Azhar 30 Bandung"
+        label: "SD Islam Al Azhar 30 Bandung"
+        aliases: ["sd azhar bandung 30", "sd 30", "sd bandung 30"]
+      - value: "SD Islam Al Azhar 31 Yogyakarta"
+        label: "SD Islam Al Azhar 31 Yogyakarta"
+        aliases: ["sd azhar yogyakarta", "sd 31", "sd yogyakarta"]
+      - value: "SD Islam Al Azhar 32 Padang"
+        label: "SD Islam Al Azhar 32 Padang"
+        aliases: ["sd azhar padang", "sd 32", "sd padang"]
+      - value: "SD Islam Al Azhar 33 Tasikmalaya"
+        label: "SD Islam Al Azhar 33 Tasikmalaya"
+        aliases: ["sd azhar tasikmalaya", "sd 33", "sd tasikmalaya"]
+      - value: "SD Islam Al Azhar 34 Makassar"
+        label: "SD Islam Al Azhar 34 Makassar"
+        aliases: ["sd azhar makassar", "sd 34", "sd makassar"]
+      - value: "SD Islam Al Azhar 35 Surabaya"
+        label: "SD Islam Al Azhar 35 Surabaya"
+        aliases: ["sd azhar surabaya 35", "sd 35", "sd surabaya 35"]
+      - value: "SD Islam Al Azhar 36 Bandung"
+        label: "SD Islam Al Azhar 36 Bandung"
+        aliases: ["sd azhar bandung 36", "sd 36", "sd bandung 36"]
+      - value: "SD Islam Al Azhar 37 Banjar Baru"
+        label: "SD Islam Al Azhar 37 Banjar Baru"
+        aliases: ["sd azhar banjar baru", "sd 37", "sd banjar baru"]
+      - value: "SD Islam Al Azhar 38 Bantul"
+        label: "SD Islam Al Azhar 38 Bantul"
+        aliases: ["sd azhar bantul", "sd 38", "sd bantul"]
+      - value: "SD Islam Al Azhar 39 Purwokerto"
+        label: "SD Islam Al Azhar 39 Purwokerto"
+        aliases: ["sd azhar purwokerto", "sd 39", "sd purwokerto"]
+      - value: "SD Islam Al Azhar 40 Cilegon"
+        label: "SD Islam Al Azhar 40 Cilegon"
+        aliases: ["sd azhar cilegon", "sd 40", "sd cilegon"]
+      - value: "SD Islam Al Azhar 41 Karawang"
+        label: "SD Islam Al Azhar 41 Karawang"
+        aliases: ["sd azhar karawang", "sd 41", "sd karawang"]
+      - value: "SD Islam Al Azhar 42 Bintan"
+        label: "SD Islam Al Azhar 42 Bintan"
+        aliases: ["sd azhar bintan", "sd 42", "sd bintan"]
+      - value: "SD Islam Al Azhar 43 Gorontalo"
+        label: "SD Islam Al Azhar 43 Gorontalo"
+        aliases: ["sd azhar gorontalo", "sd 43", "sd gorontalo"]
+      - value: "SD Islam Al Azhar 44 Summarecon Bekasi"
+        label: "SD Islam Al Azhar 44 Summarecon Bekasi"
+        aliases: ["sd azhar summarecon bekasi", "sd 44", "sd summarecon bekasi"]
+      - value: "SD Islam Al Azhar 45 Palembang"
+        label: "SD Islam Al Azhar 45 Palembang"
+        aliases: ["sd azhar palembang", "sd 45", "sd palembang"]
+      - value: "SD Islam Al Azhar 46 Grand Depok City"
+        label: "SD Islam Al Azhar 46 Grand Depok City"
+        aliases: ["sd azhar grand depok", "sd 46", "sd grand depok city"]
+      - value: "SD Islam Al Azhar 47 Samarinda"
+        label: "SD Islam Al Azhar 47 Samarinda"
+        aliases: ["sd azhar samarinda", "sd 47", "sd samarinda"]
+      - value: "SD Islam Al Azhar 48 Pati"
+        label: "SD Islam Al Azhar 48 Pati"
+        aliases: ["sd azhar pati", "sd 48", "sd pati"]
+      - value: "SD Islam Al Azhar 49 Bukit Tinggi"
+        label: "SD Islam Al Azhar 49 Bukit Tinggi"
+        aliases: ["sd azhar bukit tinggi 49", "sd 49", "sd bukit tinggi 49"]
+      - value: "SD Islam Al Azhar 50 Bandar Lampung"
+        label: "SD Islam Al Azhar 50 Bandar Lampung"
+        aliases: ["sd azhar bandar lampung", "sd 50", "sd bandar lampung"]
+      - value: "SD Islam Al Azhar 51 Bengkulu"
+        label: "SD Islam Al Azhar 51 Bengkulu"
+        aliases: ["sd azhar bengkulu", "sd 51", "sd bengkulu"]
+      - value: "SD Islam Al Azhar 52 Sidoarjo"
+        label: "SD Islam Al Azhar 52 Sidoarjo"
+        aliases: ["sd azhar sidoarjo 52", "sd 52", "sd sidoarjo 52"]
+      - value: "SD Islam Al Azhar 54 Pekanbaru"
+        label: "SD Islam Al Azhar 54 Pekanbaru"
+        aliases: ["sd azhar pekanbaru", "sd 54", "sd pekanbaru"]
+      - value: "SD Islam Al Azhar 55 Sleman Yogyakarta"
+        label: "SD Islam Al Azhar 55 Sleman Yogyakarta"
+        aliases: ["sd azhar sleman", "sd 55", "sd sleman"]
+      - value: "SD Islam Al Azhar 56 Malang"
+        label: "SD Islam Al Azhar 56 Malang"
+        aliases: ["sd azhar malang", "sd 56", "sd malang"]
+      - value: "SD Islam Al Azhar 57 Jambi"
+        label: "SD Islam Al Azhar 57 Jambi"
+        aliases: ["sd azhar jambi", "sd 57", "sd jambi"]
+      - value: "SD Islam Al Azhar 58 Balikpapan"
+        label: "SD Islam Al Azhar 58 Balikpapan"
+        aliases: ["sd azhar balikpapan", "sd 58", "sd balikpapan"]
+      - value: "SD Islam Al Azhar 59 Wonosari Gunung Kidul"
+        label: "SD Islam Al Azhar 59 Wonosari Gunung Kidul"
+        aliases: ["sd azhar wonosari", "sd 59", "sd wonosari", "sd gunung kidul"]
+      - value: "SD Islam Al Azhar 60 Pekalongan"
+        label: "SD Islam Al Azhar 60 Pekalongan"
+        aliases: ["sd azhar pekalongan", "sd 60", "sd pekalongan"]
+      - value: "SD Islam Al Azhar 61 Summarecon Serpong"
+        label: "SD Islam Al Azhar 61 Summarecon Serpong"
+        aliases: ["sd azhar summarecon serpong", "sd 61", "sd summarecon serpong"]
+      - value: "SD Islam Al Azhar 62 Summarecon Bandung"
+        label: "SD Islam Al Azhar 62 Summarecon Bandung"
+        aliases: ["sd azhar summarecon bandung", "sd 62", "sd summarecon bandung"]
+      - value: "SD Islam Al Azhar 63 Palu"
+        label: "SD Islam Al Azhar 63 Palu"
+        aliases: ["sd azhar palu", "sd 63", "sd palu"]
+      - value: "SD Islam Al Azhar 64 Gresik"
+        label: "SD Islam Al Azhar 64 Gresik"
+        aliases: ["sd azhar gresik", "sd 64", "sd gresik"]
+      - value: "SD Islam Al Azhar 65 Payakumbuh"
+        label: "SD Islam Al Azhar 65 Payakumbuh"
+        aliases: ["sd azhar payakumbuh", "sd 65", "sd payakumbuh"]
+      - value: "SD Islam Al Azhar 66 Kendari"
+        label: "SD Islam Al Azhar 66 Kendari"
+        aliases: ["sd azhar kendari", "sd 66", "sd kendari"]
+      - value: "SD Islam Al Azhar 67 Bukit Tinggi"
+        label: "SD Islam Al Azhar 67 Bukit Tinggi"
+        aliases: ["sd azhar bukit tinggi 67", "sd 67", "sd bukit tinggi 67"]
+      - value: "SD Islam Al Azhar 69 Sidoarjo"
+        label: "SD Islam Al Azhar 69 Sidoarjo"
+        aliases: ["sd azhar sidoarjo 69", "sd 69", "sd sidoarjo 69"]
+      - value: "SDI Al Fauzien Depok"
+        label: "SDI Al Fauzien Depok"
+        aliases: ["sd al fauzien", "sdi fauzien", "sd fauzien depok"]
+      
+      # SMP
       - value: "SMP Islam Al Azhar 1 Kebayoran Baru"
         label: "SMP Islam Al Azhar 1 Kebayoran Baru"
-        aliases: ["smp azhar", "smp 1"]
+        aliases: ["smp azhar", "smp 1", "smp kebayoran"]
+      
+      # SMA
       - value: "SMA Islam Al Azhar 1 Kebayoran Baru"
         label: "SMA Islam Al Azhar 1 Kebayoran Baru"
-        aliases: ["sma azhar", "sma 1"]
+        aliases: ["sma azhar", "sma 1", "sma kebayoran"]
+    
     examples:
       - "TK Islam Al Azhar 1 Kebayoran Baru"
+      - "SD Islam Al Azhar 1 Kebayoran Baru"
     tips: "Pilih unit sekolah yang dituju"
-    
+
   tingkatan:
     label: "Tingkatan/Kelas"
     step: "school_selection"
@@ -117,28 +324,250 @@ fields:
     is_mandatory: true
     depends_on: "nama_sekolah"
     options:
+      # TK Tingkatan
       - value: "Playgroup"
         label: "Playgroup"
-        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values: 
+          - "TK Islam Al Azhar 1 Kebayoran Baru"
+          - "TK Al Azhar Citra Raya Tangerang"
       - value: "TK A"
         label: "TK A"
-        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values: 
+          - "TK Islam Al Azhar 1 Kebayoran Baru"
+          - "TK Al Azhar Citra Raya Tangerang"
       - value: "TK B"
         label: "TK B"
-        parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values: 
+          - "TK Islam Al Azhar 1 Kebayoran Baru"
+          - "TK Al Azhar Citra Raya Tangerang"
+      
+      # SD Tingkatan - Kelas 1 SD untuk semua SD
       - value: "Kelas 1 SD"
         label: "Kelas 1 SD"
-        parent_values: ["SD Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values:
+          - "SD Islam Al Azhar 1 Kebayoran Baru"
+          - "SD Islam Al Azhar 2 Pasar Minggu"
+          - "SD Islam Al Azhar 3 Cirebon"
+          - "SD Islam Al Azhar 4 Kebayoran Lama"
+          - "SD Islam Al Azhar 5 Kemandoran"
+          - "SD Islam Al Azhar 6 Jakapermai Bekasi"
+          - "SD Islam Al Azhar 7 Sukabumi"
+          - "SD Islam Al Azhar 8 Kembangan"
+          - "SD Islam Al Azhar 9 Kemang Pratama Bekasi"
+          - "SD Islam Al Azhar 10 Serang"
+          - "SD Islam Al Azhar 11 Surabaya"
+          - "SD Islam Al Azhar 12 Cikarang Bekasi"
+          - "SD Islam Al Azhar 13 Rawamangun"
+          - "SD Islam Al Azhar 14 Semarang"
+          - "SD Islam Al Azhar 15 Pamulang"
+          - "SD Islam Al Azhar 16 Cilacap"
+          - "SD Islam Al Azhar 17 Bintaro"
+          - "SD Islam Al Azhar 18 Cianjur"
+          - "SD Islam Al Azhar 19 Sentra Primer"
+          - "SD Islam Al Azhar 20 Cibubur"
+          - "SD Islam Al Azhar 21 Pontianak"
+          - "SD Islam Al Azhar 22 Salatiga"
+          - "SD Islam Al Azhar 23 Jatikramat"
+          - "SD Islam Al Azhar 25 Semarang"
+          - "SD Islam Al Azhar 26 Cisolok Sukabumi"
+          - "SD Islam Al Azhar 27 Cibinong Bogor"
+          - "SD Islam Al Azhar 28 Solo Baru"
+          - "SD Islam Al Azhar 29 BSB Semarang"
+          - "SD Islam Al Azhar 30 Bandung"
+          - "SD Islam Al Azhar 31 Yogyakarta"
+          - "SD Islam Al Azhar 32 Padang"
+          - "SD Islam Al Azhar 33 Tasikmalaya"
+          - "SD Islam Al Azhar 34 Makassar"
+          - "SD Islam Al Azhar 35 Surabaya"
+          - "SD Islam Al Azhar 36 Bandung"
+          - "SD Islam Al Azhar 37 Banjar Baru"
+          - "SD Islam Al Azhar 38 Bantul"
+          - "SD Islam Al Azhar 39 Purwokerto"
+          - "SD Islam Al Azhar 40 Cilegon"
+          - "SD Islam Al Azhar 41 Karawang"
+          - "SD Islam Al Azhar 42 Bintan"
+          - "SD Islam Al Azhar 43 Gorontalo"
+          - "SD Islam Al Azhar 44 Summarecon Bekasi"
+          - "SD Islam Al Azhar 45 Palembang"
+          - "SD Islam Al Azhar 46 Grand Depok City"
+          - "SD Islam Al Azhar 47 Samarinda"
+          - "SD Islam Al Azhar 48 Pati"
+          - "SD Islam Al Azhar 49 Bukit Tinggi"
+          - "SD Islam Al Azhar 50 Bandar Lampung"
+          - "SD Islam Al Azhar 51 Bengkulu"
+          - "SD Islam Al Azhar 52 Sidoarjo"
+          - "SD Islam Al Azhar 54 Pekanbaru"
+          - "SD Islam Al Azhar 55 Sleman Yogyakarta"
+          - "SD Islam Al Azhar 56 Malang"
+          - "SD Islam Al Azhar 57 Jambi"
+          - "SD Islam Al Azhar 58 Balikpapan"
+          - "SD Islam Al Azhar 59 Wonosari Gunung Kidul"
+          - "SD Islam Al Azhar 60 Pekalongan"
+          - "SD Islam Al Azhar 61 Summarecon Serpong"
+          - "SD Islam Al Azhar 62 Summarecon Bandung"
+          - "SD Islam Al Azhar 63 Palu"
+          - "SD Islam Al Azhar 64 Gresik"
+          - "SD Islam Al Azhar 65 Payakumbuh"
+          - "SD Islam Al Azhar 66 Kendari"
+          - "SD Islam Al Azhar 67 Bukit Tinggi"
+          - "SD Islam Al Azhar 69 Sidoarjo"
+          - "SDI Al Fauzien Depok"
+      
+      # SMP Tingkatan
       - value: "Kelas 7 SMP"
         label: "Kelas 7 SMP"
-        parent_values: ["SMP Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values: 
+          - "SMP Islam Al Azhar 1 Kebayoran Baru"
+      
+      # SMA Tingkatan
       - value: "Kelas 10 SMA"
         label: "Kelas 10 SMA"
-        parent_values: ["SMA Islam Al Azhar 1 Kebayoran Baru"]
+        parent_values: 
+          - "SMA Islam Al Azhar 1 Kebayoran Baru"
+    
     examples:
       - "Playgroup"
       - "Kelas 1 SD"
+      - "Kelas 7 SMP"
     tips: "Tingkatan yang akan dimasuki"
+
+  # Metadata untuk referensi lokasi
+  # _metadata:
+  #   regions:
+  #     jakarta_selatan:
+  #       - "SD Islam Al Azhar 1 Kebayoran Baru"
+  #       - "SD Islam Al Azhar 2 Pasar Minggu"
+  #       - "SD Islam Al Azhar 4 Kebayoran Lama"
+  #       - "SD Islam Al Azhar 5 Kemandoran"
+  #     jakarta_barat:
+  #       - "SD Islam Al Azhar 8 Kembangan"
+  #     jakarta_timur:
+  #       - "SD Islam Al Azhar 13 Rawamangun"
+  #       - "SD Islam Al Azhar 19 Sentra Primer"
+  #       - "SD Islam Al Azhar 20 Cibubur"
+  #     jawa_barat:
+  #       - "SD Islam Al Azhar 3 Cirebon"
+  #       - "SD Islam Al Azhar 6 Jakapermai Bekasi"
+  #       - "SD Islam Al Azhar 7 Sukabumi"
+  #       - "SD Islam Al Azhar 9 Kemang Pratama Bekasi"
+  #       - "SD Islam Al Azhar 12 Cikarang Bekasi"
+  #       - "SD Islam Al Azhar 18 Cianjur"
+  #       - "SD Islam Al Azhar 23 Jatikramat"
+  #       - "SD Islam Al Azhar 26 Cisolok Sukabumi"
+  #       - "SD Islam Al Azhar 27 Cibinong Bogor"
+  #       - "SD Islam Al Azhar 30 Bandung"
+  #       - "SD Islam Al Azhar 33 Tasikmalaya"
+  #       - "SD Islam Al Azhar 36 Bandung"
+  #       - "SD Islam Al Azhar 41 Karawang"
+  #       - "SD Islam Al Azhar 44 Summarecon Bekasi"
+  #       - "SD Islam Al Azhar 46 Grand Depok City"
+  #       - "SD Islam Al Azhar 62 Summarecon Bandung"
+  #       - "SDI Al Fauzien Depok"
+  #     jawa_tengah:
+  #       - "SD Islam Al Azhar 14 Semarang"
+  #       - "SD Islam Al Azhar 16 Cilacap"
+  #       - "SD Islam Al Azhar 22 Salatiga"
+  #       - "SD Islam Al Azhar 25 Semarang"
+  #       - "SD Islam Al Azhar 28 Solo Baru"
+  #       - "SD Islam Al Azhar 29 BSB Semarang"
+  #       - "SD Islam Al Azhar 39 Purwokerto"
+  #       - "SD Islam Al Azhar 48 Pati"
+  #       - "SD Islam Al Azhar 60 Pekalongan"
+  #     jawa_timur:
+  #       - "SD Islam Al Azhar 11 Surabaya"
+  #       - "SD Islam Al Azhar 35 Surabaya"
+  #       - "SD Islam Al Azhar 52 Sidoarjo"
+  #       - "SD Islam Al Azhar 56 Malang"
+  #       - "SD Islam Al Azhar 64 Gresik"
+  #       - "SD Islam Al Azhar 69 Sidoarjo"
+  #     banten:
+  #       - "SD Islam Al Azhar 10 Serang"
+  #       - "SD Islam Al Azhar 15 Pamulang"
+  #       - "SD Islam Al Azhar 17 Bintaro"
+  #       - "SD Islam Al Azhar 40 Cilegon"
+  #       - "SD Islam Al Azhar 61 Summarecon Serpong"
+  #     diy:
+  #       - "SD Islam Al Azhar 31 Yogyakarta"
+  #       - "SD Islam Al Azhar 38 Bantul"
+  #       - "SD Islam Al Azhar 55 Sleman Yogyakarta"
+  #       - "SD Islam Al Azhar 59 Wonosari Gunung Kidul"
+  #     sumatera_barat:
+  #       - "SD Islam Al Azhar 32 Padang"
+  #       - "SD Islam Al Azhar 49 Bukit Tinggi"
+  #       - "SD Islam Al Azhar 65 Payakumbuh"
+  #       - "SD Islam Al Azhar 67 Bukit Tinggi"
+  #     kalimantan:
+  #       - "SD Islam Al Azhar 21 Pontianak"
+  #       - "SD Islam Al Azhar 37 Banjar Baru"
+  #       - "SD Islam Al Azhar 47 Samarinda"
+  #       - "SD Islam Al Azhar 58 Balikpapan"
+  #     sulawesi:
+  #       - "SD Islam Al Azhar 34 Makassar"
+  #       - "SD Islam Al Azhar 43 Gorontalo"
+  #       - "SD Islam Al Azhar 63 Palu"
+  #       - "SD Islam Al Azhar 66 Kendari"
+  #     sumatera_lainnya:
+  #       - "SD Islam Al Azhar 45 Palembang"
+  #       - "SD Islam Al Azhar 50 Bandar Lampung"
+  #       - "SD Islam Al Azhar 51 Bengkulu"
+  #       - "SD Islam Al Azhar 57 Jambi"
+  #     riau:
+  #       - "SD Islam Al Azhar 42 Bintan"
+  #       - "SD Islam Al Azhar 54 Pekanbaru"
+  # nama_sekolah:
+  #   label: "Nama Sekolah"
+  #   step: "school_selection"
+  #   type: "select"
+  #   is_mandatory: true
+  #   options:
+  #     - value: "TK Islam Al Azhar 1 Kebayoran Baru"
+  #       label: "TK Islam Al Azhar 1 Kebayoran Baru"
+  #       aliases: ["tk azhar kebayoran", "tk 1", "tk kebayoran"]
+  #     - value: "TK AL AZHAR CITRA RAYA TANGGERANG"
+  #       label: "TK AL AZHAR CITRA RAYA TANGGERANG"
+  #       aliases: ["tk azhar tanggerang", "tk citra raya", "tk tanggerang"]  
+  #     - value: "SD Islam Al Azhar 1 Kebayoran Baru"
+  #       label: "SD Islam Al Azhar 1 Kebayoran Baru"
+  #       aliases: ["sd azhar kebayoran", "sd 1", "sd kebayoran"]
+  #     - value: "SMP Islam Al Azhar 1 Kebayoran Baru"
+  #       label: "SMP Islam Al Azhar 1 Kebayoran Baru"
+  #       aliases: ["smp azhar", "smp 1"]
+  #     - value: "SMA Islam Al Azhar 1 Kebayoran Baru"
+  #       label: "SMA Islam Al Azhar 1 Kebayoran Baru"
+  #       aliases: ["sma azhar", "sma 1"]
+  #   examples:
+  #     - "TK Islam Al Azhar 1 Kebayoran Baru"
+  #   tips: "Pilih unit sekolah yang dituju"
+    
+  # tingkatan:
+  #   label: "Tingkatan/Kelas"
+  #   step: "school_selection"
+  #   type: "select"
+  #   is_mandatory: true
+  #   depends_on: "nama_sekolah"
+  #   options:
+  #     - value: "Playgroup"
+  #       label: "Playgroup"
+  #       parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+  #     - value: "TK A"
+  #       label: "TK A"
+  #       parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+  #     - value: "TK B"
+  #       label: "TK B"
+  #       parent_values: ["TK Islam Al Azhar 1 Kebayoran Baru"]
+  #     - value: "Kelas 1 SD"
+  #       label: "Kelas 1 SD"
+  #       parent_values: ["SD Islam Al Azhar 1 Kebayoran Baru"]
+  #     - value: "Kelas 7 SMP"
+  #       label: "Kelas 7 SMP"
+  #       parent_values: ["SMP Islam Al Azhar 1 Kebayoran Baru"]
+  #     - value: "Kelas 10 SMA"
+  #       label: "Kelas 10 SMA"
+  #       parent_values: ["SMA Islam Al Azhar 1 Kebayoran Baru"]
+  #   examples:
+  #     - "Playgroup"
+  #     - "Kelas 1 SD"
+  #   tips: "Tingkatan yang akan dimasuki"
     
   program:
     label: "Program"

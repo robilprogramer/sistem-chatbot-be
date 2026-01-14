@@ -769,7 +769,8 @@ async def export_registrations(
     status: Optional[RegistrationStatus] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    format: str = Query("json", regex="^(json|csv)$"),
+    # format: str = Query("json", regex="^(json|csv)$"),
+    format: str = Query("json", pattern="^(json|csv)$"),
     db: DatabaseManager = Depends(get_db)
 ):
     """
