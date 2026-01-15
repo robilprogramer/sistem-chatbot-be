@@ -1,0 +1,357 @@
+"""
+Database Extensions - Additional Methods for New Features
+==========================================================
+Add these methods to your existing DatabaseManager class
+"""
+
+import json
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+
+class DatabaseExtensions:
+    """
+    Extension methods for DatabaseManager.
+    Copy these methods into your existing DatabaseManager class.
+    """
+    
+    # =========================================================================
+    # UPLOAD BATCH MANAGEMENT
+    # =========================================================================
+    
+    def create_upload_batch(self, batch_id: str, session_id: str,field_name: str, total_files: int) -> bool:
+        """Create a new upload batch"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO upload_batches (id, session_id, field_name, total_files, status)
+                VALUES (%s, %s, %s, %s, 'pending')
+            """, (batch_id, session_id, field_name, total_files))
+            return True
+    
+    def update_upload_batch(self, batch_id: str, uploaded_files: int, status: str) -> bool:
+        """Update upload batch status"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            completed_at = datetime.now() if status in ['completed', 'failed'] else None
+            cursor.execute("""
+                UPDATE upload_batches 
+                SET uploaded_files = %s, status = %s, completed_at = %s
+                WHERE id = %s
+            """, (uploaded_files, status, completed_at, batch_id))
+            return cursor.rowcount > 0
+    
+    def save_document_with_batch(self, session_id: str, field_name: str, file_name: str, file_path: str, file_size: int,file_type: str, registration_number: str = None,batch_id: str = None, file_order: int = 0) -> int:
+        """Save document with batch support"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO documents 
+                (session_id, registration_number, field_name, file_name, 
+                 file_path, file_size, file_type, upload_batch_id, file_order)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (session_id, registration_number, field_name, file_name,
+                  file_path, file_size, file_type, batch_id, file_order))
+            return cursor.fetchone()[0]
+    
+    # =========================================================================
+    # AUTO-TRIGGER MANAGEMENT
+    # =========================================================================
+    
+    def get_active_triggers(self) -> List[Dict]:
+        """Get all active auto-triggers"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, trigger_name, trigger_type, conditions, message_template,
+                       priority, max_triggers_per_session, cooldown_minutes, is_active
+                FROM auto_triggers
+                WHERE is_active = true
+                ORDER BY priority DESC
+            """)
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def log_trigger(self, session_id: str, trigger_id: int, 
+                    trigger_name: str, message_sent: str) -> int:
+        """Log a triggered message"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO trigger_logs (session_id, trigger_id, trigger_name, message_sent)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, (session_id, trigger_id, trigger_name, message_sent))
+            return cursor.fetchone()[0]
+    
+    def mark_trigger_responded(self, session_id: str, trigger_id: int) -> bool:
+        """Mark that user responded to a trigger"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE trigger_logs 
+                SET user_responded = true, response_at = CURRENT_TIMESTAMP
+                WHERE session_id = %s AND trigger_id = %s 
+                AND user_responded = false
+                ORDER BY triggered_at DESC
+                LIMIT 1
+            """, (session_id, trigger_id))
+            return cursor.rowcount > 0
+    
+    def update_session_activity(self, session_id: str, user_id: str = None,
+                                 current_step: str = None, 
+                                 completion: float = None) -> bool:
+        """Update session activity for idle detection"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO session_activity 
+                (session_id, user_id, last_activity_at, last_message_at, 
+                 current_step, completion_percentage, is_idle, idle_since)
+                VALUES (%s, %s, NOW(), NOW(), %s, COALESCE(%s, 0), false, NULL)
+                ON CONFLICT (session_id) DO UPDATE SET
+                    user_id = COALESCE(%s, session_activity.user_id),
+                    last_activity_at = NOW(),
+                    last_message_at = NOW(),
+                    current_step = COALESCE(%s, session_activity.current_step),
+                    completion_percentage = COALESCE(%s, session_activity.completion_percentage),
+                    is_idle = false,
+                    idle_since = NULL
+            """, (session_id, user_id, current_step, completion,
+                  user_id, current_step, completion))
+            return True
+    
+    def get_idle_sessions(self, idle_minutes: int = 5) -> List[Dict]:
+        """Get all idle sessions"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT session_id, user_id, current_step, completion_percentage,
+                       last_activity_at, idle_since, 
+                       EXTRACT(EPOCH FROM (NOW() - last_activity_at))/60 as idle_minutes,
+                       total_idle_triggers
+                FROM session_activity
+                WHERE last_activity_at < NOW() - INTERVAL '%s minutes'
+                ORDER BY last_activity_at ASC
+            """, (idle_minutes,))
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    # =========================================================================
+    # RATING MANAGEMENT
+    # =========================================================================
+    
+    def save_rating(self, session_id: str, rating: int, 
+                    user_id: str = None, registration_number: str = None,
+                    feedback_text: str = None, category: str = "overall",
+                    metadata: Dict = None) -> int:
+        """Save a user rating"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO ratings 
+                (session_id, user_id, registration_number, rating, 
+                 feedback_text, rating_category, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (session_id, user_id, registration_number, rating,
+                  feedback_text, category, json.dumps(metadata or {})))
+            return cursor.fetchone()[0]
+    
+    def get_ratings(self, session_id: str = None, user_id: str = None,
+                    limit: int = 100) -> List[Dict]:
+        """Get ratings with optional filters"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            where_clauses = []
+            params = []
+            
+            if session_id:
+                where_clauses.append("session_id = %s")
+                params.append(session_id)
+            if user_id:
+                where_clauses.append("user_id = %s")
+                params.append(user_id)
+            
+            where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            
+            cursor.execute(f"""
+                SELECT id, session_id, user_id, registration_number, rating,
+                       feedback_text, rating_category, metadata, created_at
+                FROM ratings
+                {where_sql}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, params + [limit])
+            
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def get_rating_stats(self, start_date: datetime = None,
+                          end_date: datetime = None) -> Dict[str, Any]:
+        """Get rating statistics"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            where_clauses = []
+            params = []
+            
+            if start_date:
+                where_clauses.append("created_at >= %s")
+                params.append(start_date)
+            if end_date:
+                where_clauses.append("created_at <= %s")
+                params.append(end_date)
+            
+            where_sql = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+            
+            cursor.execute(f"""
+                SELECT 
+                    COUNT(*) as total_ratings,
+                    AVG(rating)::NUMERIC(3,2) as avg_rating,
+                    COUNT(*) FILTER (WHERE rating >= 4) as positive_ratings,
+                    COUNT(*) FILTER (WHERE rating <= 2) as negative_ratings,
+                    COUNT(*) FILTER (WHERE rating = 5) as five_star,
+                    COUNT(*) FILTER (WHERE rating = 4) as four_star,
+                    COUNT(*) FILTER (WHERE rating = 3) as three_star,
+                    COUNT(*) FILTER (WHERE rating = 2) as two_star,
+                    COUNT(*) FILTER (WHERE rating = 1) as one_star
+                FROM ratings
+                {where_sql}
+            """, params)
+            
+            row = cursor.fetchone()
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, row))
+    
+    def get_rating_prompts(self) -> List[Dict]:
+        """Get active rating prompts"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, prompt_type, conditions, prompt_message, is_active
+                FROM rating_prompts
+                WHERE is_active = true
+            """)
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in cursor.fetchall()]
+    
+    def log_rating_prompt(self, session_id: str, prompt_id: int) -> int:
+        """Log when rating prompt was shown"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO rating_prompt_logs (session_id, prompt_id)
+                VALUES (%s, %s)
+                RETURNING id
+            """, (session_id, prompt_id))
+            return cursor.fetchone()[0]
+    
+    # =========================================================================
+    # FORM CONFIG FROM DATABASE
+    # =========================================================================
+    
+    def get_form_config(self, config_key: str = None) -> Optional[Dict]:
+        """Get form configuration from database"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if config_key:
+                cursor.execute("""
+                    SELECT config_data FROM form_configs 
+                    WHERE config_key = %s AND is_active = true
+                """, (config_key,))
+            else:
+                cursor.execute("""
+                    SELECT config_data FROM form_configs 
+                    WHERE is_active = true 
+                    ORDER BY updated_at DESC LIMIT 1
+                """)
+            
+            row = cursor.fetchone()
+            if row:
+                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            return None
+    
+    def save_form_config(self, config_key: str, config_data: Dict, 
+                         version: str = "1.0.0") -> int:
+        """Save form configuration to database"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Deactivate old configs
+            cursor.execute("""
+                UPDATE form_configs SET is_active = false WHERE is_active = true
+            """)
+            
+            # Insert new config
+            cursor.execute("""
+                INSERT INTO form_configs (config_key, config_data, version, is_active)
+                VALUES (%s, %s, %s, true)
+                RETURNING id
+            """, (config_key, json.dumps(config_data), version))
+            
+            return cursor.fetchone()[0]
+    
+    def get_system_setting(self, setting_key: str) -> Optional[Dict]:
+        """Get system setting"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT setting_value FROM system_settings WHERE setting_key = %s
+            """, (setting_key,))
+            row = cursor.fetchone()
+            if row:
+                return row[0] if isinstance(row[0], dict) else json.loads(row[0])
+            return None
+    
+    def update_system_setting(self, setting_key: str, setting_value: Dict) -> bool:
+        """Update system setting"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO system_settings (setting_key, setting_value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (setting_key) DO UPDATE SET
+                    setting_value = %s,
+                    updated_at = NOW()
+            """, (setting_key, json.dumps(setting_value), json.dumps(setting_value)))
+            return True
+
+
+# =============================================================================
+# SAMPLE INSERT STATEMENTS FOR DEFAULT DATA
+# =============================================================================
+
+DEFAULT_AUTO_TRIGGERS_SQL = """
+-- Insert default auto triggers
+INSERT INTO auto_triggers (trigger_name, trigger_type, conditions, message_template, priority, max_triggers_per_session, cooldown_minutes) VALUES
+('idle_reminder', 'idle', '{"idle_minutes": 5}', 
+ 'Hai! Sepertinya kamu sedang sibuk. Jangan lupa lanjutkan pendaftaran ya! 😊\n\nKamu sudah mengisi {completion}% data.',
+ 10, 2, 10),
+
+('document_stuck', 'step_stuck', '{"step": "documents", "stuck_minutes": 10}',
+ 'Butuh bantuan upload dokumen? 📄\n\nKamu bisa upload beberapa file sekaligus lho! Cukup pilih beberapa file dan kirim.',
+ 8, 1, 15),
+
+('incomplete_reminder', 'incomplete', '{"completion_below": 50, "idle_minutes": 15}',
+ 'Data pendaftaran kamu baru {completion}% lengkap.\n\nYuk selesaikan! Ketik ''lanjut'' untuk melanjutkan. 💪',
+ 5, 1, 30),
+
+('rating_after_complete', 'rating_prompt', '{"after_completion": true}',
+ 'Terima kasih telah menyelesaikan pendaftaran! 🎉\n\nBoleh minta waktu sebentar untuk memberikan rating pengalaman kamu?\n\n⭐ Ketik angka 1-5 (5 = sangat puas)',
+ 15, 1, 60)
+ON CONFLICT DO NOTHING;
+"""
+
+DEFAULT_RATING_PROMPTS_SQL = """
+-- Insert default rating prompts
+INSERT INTO rating_prompts (prompt_type, conditions, prompt_message) VALUES
+('post_registration', '{"after_completion": true}',
+ '🌟 **Bagaimana pengalaman kamu?**\n\nBerikan rating untuk pelayanan chatbot pendaftaran kami:\n\n⭐ 1 - Sangat Tidak Puas\n⭐⭐ 2 - Tidak Puas\n⭐⭐⭐ 3 - Cukup\n⭐⭐⭐⭐ 4 - Puas\n⭐⭐⭐⭐⭐ 5 - Sangat Puas\n\nKetik angka 1-5 untuk memberikan rating.'),
+
+('idle_exit', '{"idle_minutes": 30, "min_messages": 3}',
+ 'Sepertinya kamu akan pergi. Boleh berikan rating sebelum pergi?\n\nKetik angka 1-5:\n1️⃣ Buruk | 2️⃣ Kurang | 3️⃣ Cukup | 4️⃣ Bagus | 5️⃣ Sangat Bagus')
+ON CONFLICT DO NOTHING;
+"""

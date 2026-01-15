@@ -12,7 +12,7 @@
 form:
   id: "student_registration"
   name: "Pendaftaran Siswa Baru YPI Al-Azhar"
-  version: "3.0.0"
+  version: "1.0.0"
   description: "Form pendaftaran siswa baru untuk semua jenjang"
   
   confirmation:
@@ -599,7 +599,7 @@ fields:
       min_length: 3
       max_length: 100
     examples:
-      - "Ahmad Fauzi Rahman"
+      - "Ahmad Fauzi Rahman aaaa"
     tips: "Nama lengkap sesuai akta kelahiran"
     extract_keywords: ["nama", "siswa", "anak", "name"]
     
