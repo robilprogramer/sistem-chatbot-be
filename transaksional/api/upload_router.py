@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from transaksional.app.config import settings
 from transaksional.app.database import get_db_manager
 from transaksional.app.session_state import get_session_manager
-from transaksional.app.file_storage import get_file_storage, FileValidationError
+from transaksional.app.file_storage_enhanced import get_file_storage, FileValidationError
 
 router = APIRouter(
     prefix=settings.transactional_prefix,

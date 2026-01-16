@@ -1,12 +1,17 @@
 """
-LLM Client - Improved Extraction
-================================
+LLM Client - With Vision Support for Document Classification
+============================================================
+Features:
+- Text extraction from user messages
+- Image/Vision analysis for document classification
+- Multi-provider support (OpenAI, Anthropic)
 """
 
 from typing import List, Dict, Optional, Any
 from abc import ABC, abstractmethod
 import json
 import re
+import base64
 
 from transaksional.app.config import settings
 
@@ -21,6 +26,12 @@ class BaseLLMClient(ABC):
     async def extract_fields(self, user_message: str, context: str,
                             available_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
         pass
+    
+    @abstractmethod
+    async def analyze_image(self, image_base64: str, media_type: str, 
+                           prompt: str) -> Optional[str]:
+        """Analyze image using vision capabilities"""
+        pass
 
 
 class OpenAIClient(BaseLLMClient):
@@ -29,6 +40,7 @@ class OpenAIClient(BaseLLMClient):
         config = settings.llm.get("openai", {})
         self.client = AsyncOpenAI(api_key=config.get("api_key"))
         self.model = config.get("model", "gpt-4o-mini")
+        self.vision_model = config.get("vision_model", "gpt-4o-mini")  # or gpt-4o for better vision
         self.default_temperature = config.get("temperature", 0.7)
         self.default_max_tokens = config.get("max_tokens", 500)
     
@@ -44,6 +56,55 @@ class OpenAIClient(BaseLLMClient):
             kwargs["response_format"] = {"type": "json_object"}
         response = await self.client.chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
+    
+    async def analyze_image(self, image_base64: str, media_type: str, 
+                           prompt: str) -> Optional[str]:
+        """
+        Analyze image using OpenAI Vision API.
+        
+        Args:
+            image_base64: Base64 encoded image data
+            media_type: MIME type (image/jpeg, image/png, etc.)
+            prompt: Analysis prompt
+            
+        Returns:
+            Analysis result as string, or None if failed
+        """
+        try:
+            # Build image URL for OpenAI format
+            image_url = f"data:{media_type};base64,{image_base64}"
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": prompt
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": image_url,
+                                "detail": "low"  # Use "high" for better accuracy but slower
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            response = await self.client.chat.completions.create(
+                model=self.vision_model,
+                messages=messages,
+                max_tokens=300,
+                temperature=0.1
+            )
+            
+            return response.choices[0].message.content.strip()
+            
+        except Exception as e:
+            print(f"OpenAI Vision error: {e}")
+            return None
     
     async def extract_fields(self, user_message: str, context: str,
                             available_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -136,6 +197,7 @@ class AnthropicClient(BaseLLMClient):
         config = settings.llm.get("anthropic", {})
         self.client = AsyncAnthropic(api_key=config.get("api_key"))
         self.model = config.get("model", "claude-3-sonnet-20240229")
+        self.vision_model = config.get("vision_model", "claude-3-sonnet-20240229")
         self.default_temperature = config.get("temperature", 0.7)
         self.default_max_tokens = config.get("max_tokens", 500)
     
@@ -160,6 +222,53 @@ class AnthropicClient(BaseLLMClient):
             max_tokens=max_tokens or self.default_max_tokens,
         )
         return response.content[0].text.strip()
+    
+    async def analyze_image(self, image_base64: str, media_type: str, 
+                           prompt: str) -> Optional[str]:
+        """
+        Analyze image using Anthropic Claude Vision API.
+        
+        Args:
+            image_base64: Base64 encoded image data
+            media_type: MIME type (image/jpeg, image/png, etc.)
+            prompt: Analysis prompt
+            
+        Returns:
+            Analysis result as string, or None if failed
+        """
+        try:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_base64
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+            
+            response = await self.client.messages.create(
+                model=self.vision_model,
+                messages=messages,
+                max_tokens=300,
+                temperature=0.1
+            )
+            
+            return response.content[0].text.strip()
+            
+        except Exception as e:
+            print(f"Anthropic Vision error: {e}")
+            return None
     
     async def extract_fields(self, user_message: str, context: str,
                             available_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -209,18 +318,25 @@ ATURAN:
 
 
 class MockLLMClient(BaseLLMClient):
+    """Mock client for testing without API calls"""
+    
     async def generate(self, messages: List[Dict[str, str]], temperature: float = 0.7,
                       max_tokens: int = 500, json_mode: bool = False) -> str:
         if json_mode:
             return '{}'
         return "Mock response"
     
+    async def analyze_image(self, image_base64: str, media_type: str, 
+                           prompt: str) -> Optional[str]:
+        """Mock image analysis - returns unknown for testing"""
+        return '{"type": "unknown", "confidence": 0.0, "reason": "Mock client"}'
+    
     async def extract_fields(self, user_message: str, context: str,
                             available_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {}
         message_lower = user_message.lower()
         
-        # Simple patterns
+        # Simple patterns for basic extraction
         patterns = {
             "nama_lengkap": r"(?:nama\s+(?:saya\s+)?(?:adalah\s+)?|saya\s+)([A-Za-z\s]+?)(?:,|\.|$|lahir|tempat|tanggal)",
             "tempat_lahir": r"(?:lahir\s+(?:di\s+)?|tempat\s+lahir\s*:?\s*)([A-Za-z]+)",
@@ -236,9 +352,64 @@ class MockLLMClient(BaseLLMClient):
         return result
 
 
+class HybridLLMClient(BaseLLMClient):
+    """
+    Hybrid client that can use different providers for different tasks.
+    Example: Use OpenAI for vision, Anthropic for text.
+    """
+    
+    def __init__(self):
+        config = settings.llm
+        
+        # Primary client for text
+        self.text_provider = config.get("text_provider", settings.llm_provider)
+        # Vision client (might be different)
+        self.vision_provider = config.get("vision_provider", settings.llm_provider)
+        
+        self._text_client = None
+        self._vision_client = None
+    
+    def _get_client(self, provider: str) -> BaseLLMClient:
+        """Get client instance for provider"""
+        if provider == "openai":
+            return OpenAIClient()
+        elif provider == "anthropic":
+            return AnthropicClient()
+        else:
+            return MockLLMClient()
+    
+    @property
+    def text_client(self) -> BaseLLMClient:
+        if self._text_client is None:
+            self._text_client = self._get_client(self.text_provider)
+        return self._text_client
+    
+    @property
+    def vision_client(self) -> BaseLLMClient:
+        if self._vision_client is None:
+            self._vision_client = self._get_client(self.vision_provider)
+        return self._vision_client
+    
+    async def generate(self, messages: List[Dict[str, str]], temperature: float = 0.7,
+                      max_tokens: int = 500, json_mode: bool = False) -> str:
+        return await self.text_client.generate(messages, temperature, max_tokens, json_mode)
+    
+    async def analyze_image(self, image_base64: str, media_type: str, 
+                           prompt: str) -> Optional[str]:
+        return await self.vision_client.analyze_image(image_base64, media_type, prompt)
+    
+    async def extract_fields(self, user_message: str, context: str,
+                            available_fields: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return await self.text_client.extract_fields(user_message, context, available_fields)
+
+
 def get_llm_client() -> BaseLLMClient:
     """Get LLM client based on configuration"""
     provider = settings.llm_provider
+    
+    # Check if hybrid mode is enabled
+    if settings.llm.get("hybrid_mode", False):
+        return HybridLLMClient()
     
     if provider == "openai":
         return OpenAIClient()
@@ -259,3 +430,9 @@ def get_llm() -> BaseLLMClient:
     if _llm_client is None:
         _llm_client = get_llm_client()
     return _llm_client
+
+
+def reset_llm_client():
+    """Reset LLM client (useful for testing or config changes)"""
+    global _llm_client
+    _llm_client = None

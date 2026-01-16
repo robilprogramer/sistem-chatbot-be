@@ -1,15 +1,32 @@
+# ============================================================================
+# FILE: informasional/core/rag_factory.py
+# ============================================================================
+"""
+RAG Factory - Singleton pattern untuk RAG components
+
+FLOW:
+1. Load embeddings (OpenAI/HuggingFace)
+2. Load vector database (ChromaDB)
+3. Initialize SmartRetriever (dengan document aggregation)
+4. Initialize LLM
+5. Create QueryChain
+
+Dipanggil oleh chat_router.py
+"""
+
 from langchain_openai import ChatOpenAI
 from langchain_chroma import Chroma
-from core.config_loader import APP_CONFIG
-from core.prompt_manager import get_system_prompt, get_query_prompt
 from dotenv import load_dotenv
 
-from utils.smart_retriever import SmartRetriever, EnhancedQueryChain
-from utils.embeddings import EmbeddingManager, EmbeddingModel
+from informasional.core.config_loader import APP_CONFIG
+from informasional.core.prompt_manager import get_system_prompt, get_query_prompt
+from informasional.utils.smart_retriever import SmartRetriever, EnhancedQueryChain
+from informasional.utils.embeddings import EmbeddingManager, EmbeddingModel
 
 load_dotenv()
 
-_query_chain = None  # Singleton
+# Singleton instance
+_query_chain = None
 
 
 def build_llm():
@@ -23,7 +40,7 @@ def build_llm():
             model=cfg["model"],
             temperature=cfg["temperature"],
             max_tokens=cfg["max_tokens"],
-            streaming=cfg["streaming"],
+            streaming=cfg.get("streaming", False),
         )
     
     elif provider == "gemini":
@@ -56,7 +73,7 @@ def get_query_chain():
     Flow:
     1. Load embeddings (OpenAI/HuggingFace)
     2. Load vector database (ChromaDB)
-    3. Initialize retriever
+    3. Initialize SmartRetriever (DENGAN document aggregation)
     4. Initialize LLM
     5. Create query chain
     """
@@ -65,10 +82,12 @@ def get_query_chain():
     if _query_chain is not None:
         return _query_chain
 
-    print("🔄 Initializing RAG (ONCE)")
+    print("\n" + "="*60)
+    print("🔄 Initializing RAG Pipeline")
+    print("="*60)
 
     # =========================
-    # Embeddings
+    # 1. Embeddings
     # =========================
     embedding_cfg = APP_CONFIG["embeddings"]
     
@@ -77,7 +96,7 @@ def get_query_chain():
             model_type=EmbeddingModel.OPENAI,
             config={
                 "model_name": embedding_cfg["openai"]["model_name"],
-                "dimensions": embedding_cfg["openai"]["dimensions"]
+                "dimensions": embedding_cfg["openai"].get("dimensions", 1536)
             },
         )
     elif embedding_cfg["model"] == "huggingface":
@@ -85,7 +104,7 @@ def get_query_chain():
             model_type=EmbeddingModel.HUGGINGFACE,
             config={
                 "model_name": embedding_cfg["huggingface"]["model_name"],
-                "device": embedding_cfg["huggingface"]["device"]
+                "device": embedding_cfg["huggingface"].get("device", "cpu")
             },
         )
     else:
@@ -97,7 +116,7 @@ def get_query_chain():
     print(f"   Model: {embedding_cfg[embedding_cfg['model']]['model_name']}")
 
     # =========================
-    # Vector Database
+    # 2. Vector Database (ChromaDB)
     # =========================
     chroma_cfg = APP_CONFIG["vectordb"]["chroma"]
     collection_metadata = {"hnsw:space": chroma_cfg.get("distance_function", "cosine")}
@@ -109,42 +128,66 @@ def get_query_chain():
         collection_metadata=collection_metadata
     )
     
+    # Check collection count
+    collection_count = vectorstore._collection.count()
+    
     print(f"✅ Vector DB: ChromaDB")
     print(f"   Collection: {chroma_cfg['collection_name']}")
+    print(f"   Total vectors: {collection_count}")
 
     # =========================
-    # Retriever (Simplified)
+    # 3. Smart Retriever (DENGAN Document Aggregation)
     # =========================
-    retrieval_cfg = APP_CONFIG["retrieval"]
+    retrieval_cfg = APP_CONFIG.get("retrieval", {})
     
     smart_retriever = SmartRetriever(
         vectorstore=vectorstore,
         embedding_function=embeddings,
-        top_k=retrieval_cfg["top_k"],
+        top_k=retrieval_cfg.get("top_k", 5),
         similarity_threshold=retrieval_cfg.get("similarity_threshold", 0.5),
-        min_docs_required=2  # ✅ Minimal 2 dokumen
+        max_documents=retrieval_cfg.get("max_documents", 3),  # Max dokumen unik
+        fetch_full_document=retrieval_cfg.get("fetch_full_document", True),  # KUNCI!
     )
     
-    print(f"✅ Retriever initialized")
-    print(f"   Top-K: {retrieval_cfg['top_k']}")
+    print(f"✅ Retriever: SmartRetriever with Document Aggregation")
+    print(f"   Top-K: {retrieval_cfg.get('top_k', 5)}")
     print(f"   Similarity threshold: {retrieval_cfg.get('similarity_threshold', 0.5)}")
+    print(f"   Max documents: {retrieval_cfg.get('max_documents', 3)}")
+    print(f"   Fetch full document: {retrieval_cfg.get('fetch_full_document', True)}")
 
     # =========================
-    # LLM
+    # 4. LLM
     # =========================
     llm = build_llm()
     print(f"✅ LLM: {APP_CONFIG['llm']['provider']}")
 
     # =========================
-    # Query Chain
+    # 5. Query Chain
     # =========================
     _query_chain = EnhancedQueryChain(
         smart_retriever=smart_retriever,
         llm=llm,
         system_prompt=get_system_prompt(),
         query_prompt=get_query_prompt(),
-        
     )
 
-    print("✅ RAG READY\n")
+    print("="*60)
+    print("✅ RAG Pipeline READY")
+    print("="*60 + "\n")
+    
     return _query_chain
+
+
+def reset_query_chain():
+    """Reset singleton (useful untuk testing atau reload config)"""
+    global _query_chain
+    _query_chain = None
+    print("🔄 Query chain reset")
+
+
+def get_vectorstore_info():
+    """Get info tentang vectorstore (untuk debugging)"""
+    chain = get_query_chain()
+    retriever = chain.retriever
+    
+    return retriever.get_collection_info()

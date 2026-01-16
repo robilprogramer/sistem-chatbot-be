@@ -64,26 +64,26 @@ class Document(Base):
         return f"<Document {self.id}: {self.original_filename}>"
 
 
-class DocumentPage(Base):
-    """
-    Optional: Untuk menyimpan detail per-page jika diperlukan
-    """
-    __tablename__ = "document_pages"
+# class DocumentPage(Base):
+#     """
+#     Optional: Untuk menyimpan detail per-page jika diperlukan
+#     """
+#     __tablename__ = "document_pages"
     
-    id = Column(Integer, primary_key=True, index=True)
-    document_id = Column(Integer, nullable=False, index=True)
-    page_number = Column(Integer, nullable=False)
+#     id = Column(Integer, primary_key=True, index=True)
+#     document_id = Column(Integer, nullable=False, index=True)
+#     page_number = Column(Integer, nullable=False)
     
-    # Page content
-    text = Column(Text, nullable=True)
-    tables = Column(JSON, nullable=True)
-    images = Column(JSON, nullable=True)
-    layout = Column(JSON, nullable=True)
+#     # Page content
+#     text = Column(Text, nullable=True)
+#     tables = Column(JSON, nullable=True)
+#     images = Column(JSON, nullable=True)
+#     layout = Column(JSON, nullable=True)
     
-    # Page metrics
-    ocr_confidence = Column(Float, nullable=True)
+#     # Page metrics
+#     ocr_confidence = Column(Float, nullable=True)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+#     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    def __repr__(self):
-        return f"<DocumentPage doc_id={self.document_id} page={self.page_number}>"
+#     def __repr__(self):
+#         return f"<DocumentPage doc_id={self.document_id} page={self.page_number}>"

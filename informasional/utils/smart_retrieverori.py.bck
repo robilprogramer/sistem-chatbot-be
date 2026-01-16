@@ -1,0 +1,163 @@
+from typing import List, Dict
+from collections import defaultdict
+import numpy as np
+from langchain_core.documents import Document
+
+# ========================================================================
+# SMART RETRIEVER
+# ========================================================================
+class SmartRetriever:
+    def __init__(
+        self,
+        vectorstore,
+        embedding_function,
+        top_k: int = 5,
+        similarity_threshold: float = 0.5,
+        min_docs_required: int = 2
+    ):
+        self.vectorstore = vectorstore
+        self.embedding_function = embedding_function
+        self.top_k = top_k
+        self.similarity_threshold = similarity_threshold
+        self.min_docs_required = min_docs_required
+        self.collection = vectorstore._collection
+
+    def retrieve(self, query: str) -> List[Document]:
+        print(f"\n{'='*60}")
+        print("🔍 RETRIEVAL PIPELINE")
+        print(f"{'='*60}")
+
+        # Preprocess & embed query
+        cleaned_query = query.lower().strip()
+        query_embedding = self.embedding_function.embed_query(cleaned_query)
+        print(f"📝 Query: '{cleaned_query}'")
+        print(f"🔢 Embedding dimension: {len(query_embedding)}")
+
+        # Search top-k in vector DB
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=self.top_k,
+            include=["documents", "metadatas", "distances"]
+        )
+
+        docs = []
+        for i, (doc_id, distance, content, metadata) in enumerate(zip(
+            results['ids'][0],
+            results['distances'][0],
+            results['documents'][0],
+            results['metadatas'][0]
+        )):
+            similarity = 1 - (distance / 2)  # normalize cosine distance
+            if similarity >= self.similarity_threshold:
+                metadata['similarity_score'] = similarity
+                docs.append(Document(page_content=content, metadata=metadata))
+        
+        print(f"\n✅ Total chunk relevan: {len(docs)}")
+
+        # 🔹 Group chunks per document/source
+        chunks_by_doc = defaultdict(list)
+        for doc in docs:
+            doc_key = doc.metadata.get('document_id', doc.metadata.get('source', f"unknown_{id(doc)}"))
+            chunks_by_doc[doc_key].append(doc)
+
+        # 🔹 Hitung average similarity per dokumen
+        avg_similarity_per_doc = []
+        for doc_key, doc_chunks in chunks_by_doc.items():
+            avg_sim = sum([c.metadata['similarity_score'] for c in doc_chunks]) / len(doc_chunks)
+            avg_similarity_per_doc.append((doc_key, avg_sim, doc_chunks))
+        
+        # 🔹 Sort dokumen berdasarkan avg similarity tertinggi
+        avg_similarity_per_doc.sort(key=lambda x: x[1], reverse=True)
+
+        print("\n🔹 Dokumen paling relevan (avg similarity tertinggi dulu):")
+        for doc_key, avg_sim, doc_chunks in avg_similarity_per_doc:
+            print(f"{doc_key} | Avg similarity: {avg_sim:.3f} | Chunks: {len(doc_chunks)}")
+
+        # 🔹 Gabungkan chunk per dokumen, urut dari yang paling relevan
+        merged_docs = []
+        for doc_key, avg_sim, doc_chunks in avg_similarity_per_doc:
+            combined_text = "\n".join([c.page_content for c in doc_chunks])
+            meta = doc_chunks[0].metadata
+            meta['avg_similarity'] = avg_sim
+            merged_docs.append(Document(page_content=combined_text, metadata=meta))
+
+        return merged_docs
+
+
+# ========================================================================
+# ENHANCED QUERY CHAIN
+# ========================================================================
+class EnhancedQueryChain:
+    def __init__(self, smart_retriever: SmartRetriever, llm, system_prompt: str, query_prompt: str):
+        self.retriever = smart_retriever
+        self.llm = llm
+        self.system_prompt = system_prompt
+        self.query_prompt = query_prompt
+
+    def query(self, question: str) -> Dict:
+        print(f"\n🚀 RAG PIPELINE START")
+        print(f"❓ Question: {question}")
+
+        # Ambil dokumen yang sudah digabung per document
+        docs = self.retriever.retrieve(question)
+
+        if not docs:
+            return {
+                'answer': "Maaf, saya tidak menemukan informasi yang relevan.",
+                'sources': [],
+                'metadata': {'num_sources': 0, 'avg_similarity': 0, 'relevance_check': 'FAILED'}
+            }
+
+        avg_similarity = np.mean([doc.metadata['avg_similarity'] for doc in docs])
+        if avg_similarity < 0.6:
+            return {
+                'answer': "Maaf, saya tidak yakin dengan informasi yang ditemukan.",
+                'sources': [],
+                'metadata': {'num_sources': len(docs), 'avg_similarity': avg_similarity, 'relevance_check': 'FAILED'}
+            }
+
+        # 🔹 Build context (dokumen sudah merged)
+        context = self._build_context(docs)
+        full_prompt = f"{self.system_prompt}\n\n{self.query_prompt.format(question=question, context=context)}"
+
+        # Generate LLM response
+        answer = self.llm.invoke(full_prompt).content
+
+        sources = [
+            {
+                'source': doc.metadata.get('source','Unknown'),
+                'jenjang': doc.metadata.get('jenjang','Unknown'),
+                'cabang': doc.metadata.get('cabang','Unknown'),
+                'tahun': doc.metadata.get('tahun','Unknown'),
+                'similarity': doc.metadata.get('avg_similarity', 0)
+            } for doc in docs
+        ]
+
+        return {
+            'answer': answer,
+            'sources': sources,
+            'metadata': {
+                'num_sources': len(sources),
+                'avg_similarity': avg_similarity,
+                'max_similarity': max([s['similarity'] for s in sources]),
+                'min_similarity': min([s['similarity'] for s in sources]),
+                'relevance_check': 'PASSED'
+            }
+        }
+
+    def _build_context(self, docs: List[Document]) -> str:
+        """Gabungkan konten dokumen yang sudah merged"""
+        context_parts = []
+        for i, doc in enumerate(docs, start=1):
+            meta = doc.metadata
+            meta_info = f"[Dokumen {i}]"
+            if meta.get('jenjang'):
+                meta_info += f" Jenjang: {meta['jenjang']}"
+            if meta.get('cabang'):
+                meta_info += f" | Cabang: {meta['cabang']}"
+            if meta.get('tahun'):
+                meta_info += f" | Tahun: {meta['tahun']}"
+            if meta.get('avg_similarity'):
+                meta_info += f" | Relevance: {meta['avg_similarity']:.1%}"
+            context_parts.append(f"{meta_info}\n{doc.page_content}")
+        return "\n\n---\n\n".join(context_parts)

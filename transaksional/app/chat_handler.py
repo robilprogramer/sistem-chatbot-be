@@ -1,3 +1,10 @@
+"""
+Chat Handler - FIXED VERSION
+=============================
+Removed redundant db.save_document calls.
+DB operations are now handled solely by file_storage_enhanced.py
+"""
+
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from enum import Enum
@@ -50,7 +57,15 @@ class ChatHandler:
         self.llm: BaseLLMClient = get_llm()
     
     async def process_message(self, session_id: str, user_message: str, 
-                              file_path: str = None, file_info: Dict = None,user_id: str= None ) -> ChatResult:
+                              file_path: str = None, file_info: Dict = None, 
+                              user_id: str = None) -> ChatResult:
+        """
+        Process chat message with optional file upload.
+        
+        file_info dapat berisi:
+        - Single file: {"file_path": ..., "file_name": ..., ...}
+        - Multiple files: {"batch_id": ..., "total_files": 3, "all_files": [...], ...}
+        """
         session = self._get_or_create_session(session_id)
         session.add_message("user", user_message)
         
@@ -58,15 +73,15 @@ class ChatHandler:
         print(f"Processing message in phase: {current_phase}")
         
         # Check for registration number (status check)
-       
         reg_number = self._extract_registration_number(user_message)
         print(reg_number)
+        
         if reg_number:
             result = await self._handle_check_status(session, reg_number)
         elif current_phase == ConversationPhase.UPLOADING_DOCUMENTS.value:
             result = await self._handle_document_phase(session, user_message, file_path, file_info)
         elif current_phase == ConversationPhase.AWAITING_CONFIRM.value:
-            result = await self._handle_confirmation_response(session, user_message,user_id)
+            result = await self._handle_confirmation_response(session, user_message, user_id)
         elif current_phase == ConversationPhase.AWAITING_RESET.value:
             result = await self._handle_reset_response(session, user_message)
         elif current_phase == ConversationPhase.ASK_NEW_REGISTRATION.value:
@@ -74,7 +89,6 @@ class ChatHandler:
         elif current_phase == ConversationPhase.CONFIRMED.value:
             result = await self._handle_post_confirmation(session, user_message)
         else:
-            # Check for edit request first - LLM will understand context
             if await self._is_edit_request(user_message, session):
                 result = await self._handle_edit_request(session, user_message)
             else:
@@ -107,18 +121,13 @@ class ChatHandler:
         return match.group(0) if match else None
 
     async def _is_edit_request(self, message: str, session: SessionState) -> bool:
-        """Check if user wants to edit data using LLM understanding"""
         edit_keywords = ["ubah", "ganti", "koreksi", "perbaiki", "salah", "edit", "update", 
                         "ralat", "bukan", "harusnya", "seharusnya", "yang benar"]
         message_lower = message.lower()
         return any(kw in message_lower for kw in edit_keywords)
 
     async def _handle_edit_request(self, session: SessionState, user_message: str) -> ChatResult:
-        """Handle edit request - LLM understands what to change"""
-        # Get ALL fields from all steps for editing
         all_fields = self.form_manager.get_all_fields()
-        
-        # Use LLM to understand what user wants to change
         extraction_result = await self._extract_fields_with_llm(user_message, all_fields, session)
         
         if not extraction_result:
@@ -127,10 +136,8 @@ class ChatHandler:
                 "Contoh cara mengubah:\n"
                 "• \"ubah nama menjadi Ahmad Fauzi\"\n"
                 "• \"ganti alamat ke Jl. Sudirman No. 10\"\n"
-                "• \"koreksi tanggal lahir 15/05/2000\"\n"
-                "• \"nama ayah budi, ibu siti\" (ubah sekaligus)")
+                "• \"koreksi tanggal lahir 15/05/2000\"")
         
-        # Apply changes
         updated_fields = []
         for field_id, value in extraction_result.items():
             field = self.form_manager.get_field(field_id)
@@ -148,7 +155,6 @@ class ChatHandler:
                     response_parts.append(f"• {label}: ~~{old_val}~~ → **{new_val}**")
                 else:
                     response_parts.append(f"• {label}: **{new_val}**")
-            
             response_parts.append("\nKetik **'summary'** untuk melihat semua data.")
             return self._build_result(session, "\n".join(response_parts))
         
@@ -193,7 +199,10 @@ class ChatHandler:
                 session.raw_data["_phase"] = ConversationPhase.UPLOADING_DOCUMENTS.value
                 session.raw_data["_current_document_index"] = 0
                 transition = self.form_manager.get_step_transition_message(current_step, next_step.id)
-                return self._build_result(session, transition or "Lanjut ke upload dokumen.")
+                first_doc_prompt = await self._prompt_next_document(session)
+                response = transition or "Lanjut ke upload dokumen."
+                response += "\n\n" + first_doc_prompt.response
+                return self._build_result(session, response)
             
             transition_msg = self.form_manager.get_step_transition_message(current_step, next_step.id)
             session.current_step = next_step.id
@@ -225,7 +234,11 @@ class ChatHandler:
                 value = session.get_field(f.id)
                 if value:
                     if f.type == "file":
-                        step_data.append(f"  • {f.label}: ✓ Uploaded")
+                        doc_count = session.raw_data.get(f"_doc_count_{f.id}", 1)
+                        if doc_count > 1:
+                            step_data.append(f"  • {f.label}: ✓ {doc_count} file")
+                        else:
+                            step_data.append(f"  • {f.label}: ✓ Uploaded")
                     else:
                         step_data.append(f"  • {f.label}: {value}")
             if step_data:
@@ -251,7 +264,11 @@ class ChatHandler:
 **Mengubah Data:**
 • \"ubah nama menjadi Ahmad\"
 • \"ganti alamat ke Jl. Baru\"
-• \"koreksi tanggal lahir 15/05/2000\"""")
+
+**Upload Dokumen:**
+• Bisa upload **berbagai dokumen sekaligus**
+• Sistem akan otomatis mengenali jenis dokumen
+• Ketik **'skip'** untuk melewati dokumen opsional""")
 
     async def _handle_confirm_request(self, session: SessionState) -> ChatResult:
         can_confirm, reason = self.form_manager.can_confirm(session.raw_data)
@@ -286,9 +303,9 @@ class ChatHandler:
         session.raw_data["_registration_status"] = "pending_payment"
         
         try:
-            from  transaksional.app.database import get_db_manager
+            from transaksional.app.database import get_db_manager
             db = get_db_manager()
-            db.save_registration(session, registration_number,user_id)
+            db.save_registration(session, registration_number, user_id)
         except Exception as e:
             print(f"DB save error: {e}")
         
@@ -376,7 +393,7 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
 
     async def _handle_check_status(self, session: SessionState, registration_number: str) -> ChatResult:
         try:
-            from app.database import get_db_manager
+            from transaksional.app.database import get_db_manager
             db = get_db_manager()
             reg_data = db.get_registration(registration_number)
         except:
@@ -408,13 +425,17 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
         result.registration_status = status
         return result
 
-    # DOCUMENT UPLOAD HANDLERS
+    # =========================================================================
+    # DOCUMENT UPLOAD HANDLERS - SMART CLASSIFICATION
+    # =========================================================================
+    
     def _get_document_fields_ordered(self) -> List[FieldConfig]:
         doc_fields = self.form_manager.get_fields_for_step("documents")
         return sorted(doc_fields, key=lambda f: f.raw_config.get("order", 999))
 
     async def _handle_document_phase(self, session: SessionState, user_message: str, 
                                      file_path: str = None, file_info: Dict = None) -> ChatResult:
+        """Handle document upload phase - with SMART classification."""
         msg_lower = user_message.lower().strip()
         
         if msg_lower in ["skip", "lewati", "tidak ada", "kosong"]:
@@ -427,125 +448,232 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
         elif command == "summary":
             return await self._handle_summary(session)
         
-        if file_path:
-            return await self._handle_document_upload(session, file_path, file_info)
+        if file_path and file_info:
+            return await self._handle_smart_document_upload(session, file_path, file_info)
         
         return await self._prompt_next_document(session)
 
     async def _prompt_next_document(self, session: SessionState) -> ChatResult:
+        """Prompt user to upload documents."""
         doc_fields = self._get_document_fields_ordered()
-        current_index = session.raw_data.get("_current_document_index", 0)
         
-        while current_index < len(doc_fields):
-            field = doc_fields[current_index]
-            if not session.get_field(field.id):
-                break
-            current_index += 1
+        # Count uploaded documents
+        uploaded_fields = [f for f in doc_fields if session.get_field(f.id)]
+        missing_mandatory = [f for f in doc_fields if f.is_mandatory and not session.get_field(f.id)]
+        missing_optional = [f for f in doc_fields if not f.is_mandatory and not session.get_field(f.id)]
         
-        session.raw_data["_current_document_index"] = current_index
-        
-        if current_index >= len(doc_fields):
+        # If all mandatory are filled, allow to finish
+        if not missing_mandatory:
             return await self._finish_document_upload(session)
         
-        field = doc_fields[current_index]
-        prompt = field.raw_config.get("prompt_message", f"📄 Upload **{field.label}**")
+        # Build prompt
+        prompt_parts = ["📄 **UPLOAD DOKUMEN**\n"]
+        prompt_parts.append("💡 **Tips:** Upload semua dokumen sekaligus! Sistem akan otomatis mengenali jenisnya.\n")
         
-        if not field.is_mandatory:
-            prompt += "\n\n💡 Ketik **'skip'** untuk melewati."
+        # List what's still needed
+        prompt_parts.append("**Dokumen yang masih diperlukan:**")
+        for f in missing_mandatory:
+            prompt_parts.append(f"  ❗ {f.label} *(wajib)*")
         
-        uploaded = sum(1 for f in doc_fields if session.get_field(f.id))
-        total = len(doc_fields)
-        progress = f"\n\n📊 Progress: {uploaded}/{total} dokumen"
+        if missing_optional:
+            prompt_parts.append("\n**Opsional:**")
+            for f in missing_optional[:3]:  # Show max 3 optional
+                prompt_parts.append(f"  ○ {f.label}")
         
-        return self._build_result(session, prompt + progress)
+        # Progress
+        uploaded_count = len(uploaded_fields)
+        total_mandatory = sum(1 for f in doc_fields if f.is_mandatory)
+        uploaded_mandatory = sum(1 for f in uploaded_fields if f.is_mandatory)
+        
+        prompt_parts.append(f"\n📊 Progress: {uploaded_mandatory}/{total_mandatory} dokumen wajib")
+        
+        if uploaded_fields:
+            prompt_parts.append("\n**Sudah diupload:**")
+            for f in uploaded_fields[:5]:
+                count = session.raw_data.get(f"_doc_count_{f.id}", 1)
+                prompt_parts.append(f"  ✅ {f.label}" + (f" ({count} file)" if count > 1 else ""))
+        
+        return self._build_result(session, "\n".join(prompt_parts))
 
-    async def _handle_document_upload(self, session: SessionState, file_path: str, file_info: Dict = None) -> ChatResult:
+    async def _handle_smart_document_upload(self, session: SessionState, file_path: str, 
+                                            file_info: Dict = None) -> ChatResult:
+        """
+        Handle document upload with SMART CLASSIFICATION.
+        
+        FIXED: Removed redundant db.save_document calls.
+        DB operations are now handled in file_storage_enhanced.py
+        """
+        from transaksional.app.document_classifier import get_document_classifier, DocumentType
+        
+        classifier = get_document_classifier()
         doc_fields = self._get_document_fields_ordered()
-        current_index = session.raw_data.get("_current_document_index", 0)
         
-        if current_index >= len(doc_fields):
-            return await self._finish_document_upload(session)
+        # Check if this is multiple file upload
+        is_batch = file_info and file_info.get("batch_id") and file_info.get("all_files")
         
-        field = doc_fields[current_index]
+        if is_batch:
+            # MULTIPLE FILES - classify each
+            all_files = file_info.get("all_files", [])
+            
+            # Classify all files
+            classifications = await classifier.classify_batch(all_files, use_vision=True)
+            
+            # Group by detected type
+            grouped = {}
+            unclassified = []
+            
+            for cls_result in classifications:
+                if cls_result.detected_type == DocumentType.UNKNOWN:
+                    unclassified.append(cls_result)
+                else:
+                    field_id = classifier.get_field_id_for_type(cls_result.detected_type)
+                    if field_id not in grouped:
+                        grouped[field_id] = []
+                    grouped[field_id].append(cls_result)
+            
+            # Save classified documents to session
+            # NOTE: DB save sudah dilakukan di file_storage_enhanced.py saat upload
+            response_parts = ["📎 **Dokumen berhasil diupload & dikenali:**\n"]
+            
+            for field_id, files in grouped.items():
+                # Find matching field
+                field = next((f for f in doc_fields if f.id == field_id), None)
+                if not field:
+                    continue
+                
+                # Save first file as reference to session state
+                session.set_field(field_id, files[0].file_path, field.label)
+                session.raw_data[f"_doc_count_{field_id}"] = len(files)
+                
+                # Build response
+                if len(files) > 1:
+                    response_parts.append(f"✅ **{field.label}:** {len(files)} file")
+                else:
+                    response_parts.append(f"✅ **{field.label}:** {files[0].original_name}")
+            
+            # Handle unclassified files
+            if unclassified:
+                response_parts.append(f"\n⚠️ **{len(unclassified)} file tidak dikenali:**")
+                for f in unclassified[:3]:
+                    response_parts.append(f"  • {f.original_name}")
+                if len(unclassified) > 3:
+                    response_parts.append(f"  ... dan {len(unclassified) - 3} lainnya")
+                response_parts.append("\n💡 Coba rename file dengan nama yang lebih jelas (contoh: akta_kelahiran.pdf)")
+            
+            # Get next prompt
+            next_result = await self._prompt_next_document(session)
+            response_parts.append("\n---\n")
+            response_parts.append(next_result.response)
+            
+            return self._build_result(session, "\n".join(response_parts))
         
-        allowed_ext = field.raw_config.get("allowed_extensions", [".pdf", ".jpg", ".jpeg", ".png"])
-        file_ext = "." + file_path.split(".")[-1].lower() if "." in file_path else ""
-        
-        if file_ext not in allowed_ext:
-            return self._build_result(session, f"❌ Format tidak didukung. Gunakan: {', '.join(allowed_ext)}")
-        
-        session.set_field(field.id, file_path, field.label)
-        if file_info:
-            session.set_document(field.id, file_info)
-        
-        try:
-            from  transaksional.app.database import get_db_manager
-            db = get_db_manager()
-            db.save_document(
-                session_id=session.session_id,
-                field_name=field.id,
-                file_name=file_info.get("file_name", "") if file_info else "",
-                file_path=file_path,
-                file_size=file_info.get("file_size", 0) if file_info else 0,
-                file_type=file_info.get("content_type", "") if file_info else ""
-            )
-        except Exception as e:
-            print(f"DB save doc error: {e}")
-        
-        success_msg = field.raw_config.get("success_message", f"✅ {field.label} berhasil!")
-        session.raw_data["_current_document_index"] = current_index + 1
-        
-        next_result = await self._prompt_next_document(session)
-        return self._build_result(session, f"{success_msg}\n\n{next_result.response}")
+        else:
+            # SINGLE FILE - classify
+            original_name = file_info.get("original_name", "") if file_info else ""
+            cls_result = await classifier.classify_single(file_path, original_name, use_vision=True)
+            
+            if cls_result.detected_type == DocumentType.UNKNOWN:
+                # Couldn't classify - assign to current expected document
+                current_index = session.raw_data.get("_current_document_index", 0)
+                if current_index < len(doc_fields):
+                    field = doc_fields[current_index]
+                    field_id = field.id
+                else:
+                    # No specific field expected, ask user
+                    return self._build_result(session, 
+                        f"❓ Tidak dapat mengenali jenis dokumen **{original_name}**.\n\n"
+                        "Mohon rename file dengan nama yang lebih jelas, contoh:\n"
+                        "• akta_kelahiran.pdf\n"
+                        "• kartu_keluarga.jpg\n"
+                        "• ktp_ayah.png")
+            else:
+                field_id = classifier.get_field_id_for_type(cls_result.detected_type)
+            
+            # Find field
+            field = next((f for f in doc_fields if f.id == field_id), None)
+            if not field:
+                return self._build_result(session, f"❌ Jenis dokumen tidak valid: {field_id}")
+            
+            # Validate extension
+            allowed_ext = field.raw_config.get("allowed_extensions", [".pdf", ".jpg", ".jpeg", ".png"])
+            file_ext = "." + file_path.split(".")[-1].lower() if "." in file_path else ""
+            
+            if file_ext not in allowed_ext:
+                return self._build_result(session, 
+                    f"❌ Format tidak didukung untuk {field.label}. Gunakan: {', '.join(allowed_ext)}")
+            
+            # Save to session state only
+            # NOTE: DB save sudah dilakukan di file_storage_enhanced.py
+            session.set_field(field_id, file_path, field.label)
+            session.raw_data[f"_doc_count_{field_id}"] = 1
+            
+            confidence_text = ""
+            if cls_result.confidence < 0.7:
+                confidence_text = f" *(confidence: {cls_result.confidence:.0%})*"
+            
+            success_msg = f"✅ **{field.label}** berhasil diupload!{confidence_text}"
+            
+            # Get next prompt
+            next_result = await self._prompt_next_document(session)
+            
+            return self._build_result(session, f"{success_msg}\n\n{next_result.response}")
 
     async def _handle_skip_document(self, session: SessionState) -> ChatResult:
+        """Handle skip - now skips all optional at once."""
         doc_fields = self._get_document_fields_ordered()
-        current_index = session.raw_data.get("_current_document_index", 0)
         
-        if current_index >= len(doc_fields):
-            return await self._finish_document_upload(session)
+        missing_mandatory = [f for f in doc_fields if f.is_mandatory and not session.get_field(f.id)]
         
-        field = doc_fields[current_index]
+        if missing_mandatory:
+            return self._build_result(session, 
+                f"❌ Masih ada dokumen wajib yang belum diupload:\n• " + 
+                "\n• ".join([f.label for f in missing_mandatory]))
         
-        if field.is_mandatory:
-            return self._build_result(session, f"❌ **{field.label}** wajib diupload.")
-        
-        session.raw_data["_current_document_index"] = current_index + 1
-        next_result = await self._prompt_next_document(session)
-        return self._build_result(session, f"⏭️ {field.label} dilewati.\n\n{next_result.response}")
+        # All mandatory filled, can skip optional
+        return await self._finish_document_upload(session)
 
     async def _finish_document_upload(self, session: SessionState) -> ChatResult:
+        """Finish document upload phase."""
         doc_fields = self._get_document_fields_ordered()
         
         missing_mandatory = [f for f in doc_fields if f.is_mandatory and not session.get_field(f.id)]
         if missing_mandatory:
-            for i, f in enumerate(doc_fields):
-                if f in missing_mandatory:
-                    session.raw_data["_current_document_index"] = i
-                    break
-            return self._build_result(session, f"⚠️ Dokumen wajib belum lengkap:\n• " + "\n• ".join([f.label for f in missing_mandatory]))
+            return self._build_result(session, 
+                f"⚠️ Dokumen wajib belum lengkap:\n• " + "\n• ".join([f.label for f in missing_mandatory]))
         
-        uploaded = [f"✅ {f.label}" for f in doc_fields if session.get_field(f.id)]
-        skipped = [f"⏭️ {f.label}" for f in doc_fields if not session.get_field(f.id)]
+        uploaded_items = []
+        skipped_items = []
         
-        summary = "📋 **Dokumen:**\n" + "\n".join(uploaded)
-        if skipped:
-            summary += "\n\n**Dilewati:**\n" + "\n".join(skipped)
+        for f in doc_fields:
+            if session.get_field(f.id):
+                doc_count = session.raw_data.get(f"_doc_count_{f.id}", 1)
+                if doc_count > 1:
+                    uploaded_items.append(f"✅ {f.label} ({doc_count} file)")
+                else:
+                    uploaded_items.append(f"✅ {f.label}")
+            else:
+                skipped_items.append(f"⏭️ {f.label}")
+        
+        summary = "📋 **Dokumen:**\n" + "\n".join(uploaded_items)
+        if skipped_items:
+            summary += "\n\n**Dilewati:**\n" + "\n".join(skipped_items)
         
         session.raw_data["_phase"] = ConversationPhase.PRE_CONFIRM.value
         session.current_step = "review"
         
-        return self._build_result(session, f"{summary}\n\n---\n\n✅ Upload selesai!\n\nKetik **'konfirmasi'** untuk menyelesaikan.")
+        return self._build_result(session, 
+            f"{summary}\n\n---\n\n✅ Upload selesai!\n\nKetik **'konfirmasi'** untuk menyelesaikan.")
 
+    # =========================================================================
     # DATA INPUT HANDLERS
+    # =========================================================================
+    
     async def _handle_data_input(self, session: SessionState, user_message: str) -> ChatResult:
         current_step = session.current_step
         fields = self.form_manager.get_fields_for_step(current_step)
         
-        # Always try LLM first
         extraction_result = await self._extract_fields_with_llm(user_message, fields, session)
         
-        # Fallback to simple extraction only if LLM returns nothing
         if not extraction_result:
             print("LLM extraction returned nothing, using simple extraction.")
             extraction_result = self.form_manager.extract_fields_simple(user_message, fields)
@@ -576,9 +704,7 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
                                  validation_errors=validation_errors)
 
     async def _extract_fields_with_llm(self, message: str, fields: List[FieldConfig], session: SessionState) -> Dict:
-        """Extract fields using LLM with proper parameters"""
         try:
-            # Convert FieldConfig objects to dict for LLM
             fields_dict = [
                 {
                     "id": f.id,
@@ -591,7 +717,6 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
                 for f in fields
             ]
             
-            # Build context from recent messages
             recent = session.get_recent_messages(5)
             context = "\n".join([f"{m['role']}: {m['content']}" for m in recent])
             
@@ -661,8 +786,13 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
             "uploaded": sum(1 for f in doc_fields if session.get_field(f.id)),
             "mandatory_uploaded": sum(1 for f in doc_fields if f.is_mandatory and session.get_field(f.id)),
             "documents": [
-                {"field_id": f.id, "label": f.label, "is_mandatory": f.is_mandatory,
-                 "is_uploaded": session.get_field(f.id) is not None}
+                {
+                    "field_id": f.id, 
+                    "label": f.label, 
+                    "is_mandatory": f.is_mandatory,
+                    "is_uploaded": session.get_field(f.id) is not None,
+                    "file_count": session.raw_data.get(f"_doc_count_{f.id}", 1 if session.get_field(f.id) else 0)
+                }
                 for f in doc_fields
             ]
         }
@@ -684,7 +814,10 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
             registration_status=session.raw_data.get("_registration_status"),
             step_info=step_info,
             documents_status=documents_status,
-            metadata={"message_count": len(session.conversation_history), "edit_count": len(session.edit_history)}
+            metadata={
+                "message_count": len(session.conversation_history), 
+                "edit_count": len(session.edit_history)
+            }
         )
 
 

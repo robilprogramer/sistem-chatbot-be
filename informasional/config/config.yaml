@@ -24,15 +24,27 @@ ocr:
     use_angle_cls: true
 
 # Chunking Configuration
+# chunking:
+#   strategy: "semantic"  # fixed_size or semantic
+#   fixed_size:
+#     chunk_size: 1000
+#     chunk_overlap: 200
+#     separators: ["\n\n", "\n", ".", " ", ""]
+#   semantic:
+#     breakpoint_threshold_type: "percentile"
+#     breakpoint_threshold: 95
+
 chunking:
-  strategy: "semantic"  # fixed_size or semantic
+  strategy: "hybrid"       # fixed_size / semantic / hybrid
   fixed_size:
     chunk_size: 1000
     chunk_overlap: 200
     separators: ["\n\n", "\n", ".", " ", ""]
   semantic:
+    use_openai: True
     breakpoint_threshold_type: "percentile"
     breakpoint_threshold: 95
+    min_length: 1200   # threshold minimal untuk semantic split
 
 # Embedding Configuration
 embeddings:
@@ -51,10 +63,11 @@ embeddings:
 retrieval:
   method: "semantic"  # dense, bm25, or hybrid
   top_k: 5  # Ambil lebih banyak untuk di-rerank (jika reranker enabled)
-  similarity_threshold: 0.7  # Filter by similarity (0-1)
+  similarity_threshold: 0.5  # Filter by similarity (0-1)
   hybrid:
     dense_weight: 0.7
     bm25_weight: 0.3
+  fetch_full_document: true  # KUNCI!  
   
   # ===========================================================================
   # RERANKER CONFIGURATION

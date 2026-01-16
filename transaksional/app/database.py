@@ -29,14 +29,18 @@ class DatabaseManager:
     def __init__(self, database_url: str = None):
         self.database_url = database_url or os.getenv(
             "DATABASE_URL", 
-            "postgresql://postgres:postgres@localhost:5432/xxxxx"
+            "postgresql://postgres:postgres@localhost:5432/ypi_alazhar"
         )
         
-        # Connection pool
+        # Connection pool with keepalive
         self._pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=2,
             maxconn=10,
-            dsn=self.database_url
+            dsn=self.database_url,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5
         )
         
         self._init_db()
@@ -44,16 +48,86 @@ class DatabaseManager:
     
     @contextmanager
     def get_connection(self):
-        """Get connection from pool with auto-commit/rollback"""
-        conn = self._pool.getconn()
+        """Get connection from pool with auto-commit/rollback and retry logic"""
+        conn = None
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                conn = self._pool.getconn()
+                
+                # Test connection is alive
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT 1")
+                    cursor.close()
+                except Exception:
+                    try:
+                        self._pool.putconn(conn, close=True)
+                    except:
+                        pass
+                    conn = self._pool.getconn()
+                
+                yield conn
+                conn.commit()
+                break
+                
+            except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                retry_count += 1
+                print(f"⚠️ Database connection error (attempt {retry_count}/{max_retries}): {e}")
+                
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                    try:
+                        self._pool.putconn(conn, close=True)
+                    except:
+                        pass
+                    conn = None
+                
+                if retry_count >= max_retries:
+                    print("❌ Max retries reached, recreating connection pool...")
+                    self._recreate_pool()
+                    raise
+                    
+                import time
+                time.sleep(0.5 * retry_count)
+                
+            except Exception as e:
+                if conn:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                raise
+            finally:
+                if conn:
+                    try:
+                        self._pool.putconn(conn)
+                    except:
+                        pass
+    
+    def _recreate_pool(self):
+        """Recreate connection pool if all connections are dead"""
         try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            self._pool.putconn(conn)
+            if self._pool:
+                self._pool.closeall()
+        except:
+            pass
+        
+        self._pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=10,
+            dsn=self.database_url,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5
+        )
+        print("✅ Connection pool recreated")
     
     def _init_db(self):
         """Initialize all database tables"""
@@ -80,7 +154,10 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     confirmed_at TIMESTAMP,
-                    expires_at TIMESTAMP
+                    expires_at TIMESTAMP,
+                    last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    idle_trigger_count INTEGER DEFAULT 0,
+                    last_trigger_at TIMESTAMP
                 )
             """)
             
@@ -255,6 +332,71 @@ class DatabaseManager:
                 )
             """)
             
+            # Form steps table (for database config)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS form_steps (
+                    id SERIAL PRIMARY KEY,
+                    config_id INTEGER REFERENCES form_configs(id) ON DELETE CASCADE,
+                    step_id TEXT NOT NULL,
+                    step_name TEXT NOT NULL,
+                    description TEXT,
+                    step_order INTEGER DEFAULT 0,
+                    is_mandatory BOOLEAN DEFAULT TRUE,
+                    can_skip BOOLEAN DEFAULT FALSE,
+                    skip_conditions JSONB,
+                    icon TEXT,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Form fields table (for database config)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS form_fields (
+                    id SERIAL PRIMARY KEY,
+                    config_id INTEGER REFERENCES form_configs(id) ON DELETE CASCADE,
+                    field_id TEXT NOT NULL,
+                    step_id TEXT NOT NULL,
+                    field_label TEXT NOT NULL,
+                    field_type TEXT DEFAULT 'text',
+                    is_mandatory BOOLEAN DEFAULT FALSE,
+                    validation JSONB,
+                    options JSONB,
+                    examples JSONB,
+                    tips TEXT,
+                    extract_keywords JSONB,
+                    auto_formats JSONB,
+                    auto_clean BOOLEAN DEFAULT FALSE,
+                    default_value TEXT,
+                    field_order INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Form messages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS form_messages (
+                    id SERIAL PRIMARY KEY,
+                    config_id INTEGER REFERENCES form_configs(id) ON DELETE CASCADE,
+                    message_key TEXT NOT NULL,
+                    message_template TEXT NOT NULL,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
+            # Form commands table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS form_commands (
+                    id SERIAL PRIMARY KEY,
+                    config_id INTEGER REFERENCES form_configs(id) ON DELETE CASCADE,
+                    command_name TEXT NOT NULL,
+                    keywords JSONB,
+                    pattern TEXT,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
             # System settings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS system_settings (
@@ -276,12 +418,16 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_reg_user_id ON registrations(user_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_session ON registration_documents(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_batch ON registration_documents(upload_batch_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_doc_field ON registration_documents(field_name)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_upload_batch_session ON upload_batches(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_trigger_log_session ON trigger_logs(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_activity_idle ON session_activity(is_idle)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_activity_last ON session_activity(last_activity_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_rating_session ON ratings(session_id)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_rating_created ON ratings(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_form_steps_config ON form_steps(config_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_form_fields_config ON form_fields(config_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_form_fields_step ON form_fields(step_id)")
             
             # =========================================================
             # INSERT DEFAULT DATA
@@ -347,8 +493,9 @@ class DatabaseManager:
     def _run_migrations(self):
         """Run pending migrations"""
         migrations = [
-            ("001_initial", lambda c: None),  # Already handled by _init_db
+            ("001_initial", lambda c: None),
             ("002_add_batch_columns", self._migrate_add_batch_columns),
+            ("003_add_activity_columns", self._migrate_add_activity_columns),
         ]
         
         with self.get_connection() as conn:
@@ -368,8 +515,7 @@ class DatabaseManager:
                     print(f"   ✅ Migration applied: {migration_name}")
     
     def _migrate_add_batch_columns(self, cursor):
-        """Migration: Add batch columns to registration_documents if not exist"""
-        # PostgreSQL handles this gracefully with IF NOT EXISTS in column add
+        """Migration: Add batch columns to registration_documents"""
         try:
             cursor.execute("""
                 ALTER TABLE registration_documents 
@@ -377,7 +523,19 @@ class DatabaseManager:
                 ADD COLUMN IF NOT EXISTS file_order INTEGER DEFAULT 0
             """)
         except:
-            pass  # Columns might already exist
+            pass
+    
+    def _migrate_add_activity_columns(self, cursor):
+        """Migration: Add activity columns to registrations"""
+        try:
+            cursor.execute("""
+                ALTER TABLE registrations 
+                ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS idle_trigger_count INTEGER DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS last_trigger_at TIMESTAMP
+            """)
+        except:
+            pass
     
     # =========================================================================
     # DRAFT MANAGEMENT
@@ -393,14 +551,15 @@ class DatabaseManager:
             
             cursor.execute("""
                 INSERT INTO registrations 
-                (session_id, user_id, status, current_step, completion_percentage, raw_data, expires_at)
-                VALUES (%s, %s, 'draft', %s, %s, %s, %s)
+                (session_id, user_id, status, current_step, completion_percentage, raw_data, expires_at, last_activity_at)
+                VALUES (%s, %s, 'draft', %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT (session_id) DO UPDATE SET
                     current_step = EXCLUDED.current_step,
                     completion_percentage = EXCLUDED.completion_percentage,
                     raw_data = EXCLUDED.raw_data,
                     user_id = COALESCE(EXCLUDED.user_id, registrations.user_id),
                     updated_at = CURRENT_TIMESTAMP,
+                    last_activity_at = CURRENT_TIMESTAMP,
                     expires_at = EXCLUDED.expires_at
             """, (session_id, user_id, current_step, completion_percentage, 
                   json.dumps(raw_data), expires_at))
@@ -471,7 +630,6 @@ class DatabaseManager:
                 "jenis_kelamin": session.get_field("jenis_kelamin"),
             }
             
-            # Get existing user_id if not provided
             cursor.execute("SELECT user_id FROM registrations WHERE session_id = %s", 
                           (session.session_id,))
             existing = cursor.fetchone()
@@ -493,13 +651,11 @@ class DatabaseManager:
             """, (session.session_id, final_user_id, registration_number, session.current_step,
                   json.dumps(session.raw_data), json.dumps(student_data)))
             
-            # Update documents with registration number
             cursor.execute("""
                 UPDATE registration_documents SET registration_number = %s
                 WHERE session_id = %s
             """, (registration_number, session.session_id))
             
-            # Log status change
             self._log_status_change_internal(cursor, registration_number, None, 'pending_payment', 
                                             'system', 'Pendaftaran dikonfirmasi')
             
@@ -515,14 +671,12 @@ class DatabaseManager:
             row = cursor.fetchone()
             
             if row:
-                # Get documents
                 cursor.execute("""
                     SELECT * FROM registration_documents WHERE registration_number = %s
                     ORDER BY uploaded_at
                 """, (registration_number,))
                 docs = cursor.fetchall()
                 
-                # Get status history
                 cursor.execute("""
                     SELECT * FROM status_history WHERE registration_number = %s
                     ORDER BY changed_at DESC
@@ -608,7 +762,6 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Get current status
             cursor.execute("SELECT status FROM registrations WHERE registration_number = %s",
                           (registration_number,))
             row = cursor.fetchone()
@@ -617,13 +770,11 @@ class DatabaseManager:
             
             old_status = row["status"]
             
-            # Update status
             cursor.execute("""
                 UPDATE registrations SET status = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE registration_number = %s
             """, (status, registration_number))
             
-            # Log status change
             self._log_status_change_internal(cursor, registration_number, old_status, status, 
                                             changed_by, notes)
             
@@ -641,7 +792,7 @@ class DatabaseManager:
     
     def _log_status_change_internal(self, cursor, registration_number: str, old_status: str,
                                     new_status: str, changed_by: str, notes: str):
-        """Log status change to history (internal use with existing cursor)"""
+        """Log status change to history"""
         cursor.execute("""
             INSERT INTO status_history 
             (registration_number, old_status, new_status, changed_by, notes)
@@ -657,42 +808,56 @@ class DatabaseManager:
                                             new_status, changed_by, notes)
     
     # =========================================================================
-    # DOCUMENT MANAGEMENT
+    # DOCUMENT MANAGEMENT - FIXED WITH batch_id SUPPORT
     # =========================================================================
     
     def save_document(self, session_id: str, field_name: str, file_name: str,
                      file_path: str, file_size: int, file_type: str,
-                     registration_number: str = None) -> int:
-        """Save uploaded document"""
+                     registration_number: str = None, batch_id: str = None, 
+                     file_order: int = 0) -> int:
+        """Save uploaded document with batch support"""
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Check if document for this field already exists
-            cursor.execute("""
-                SELECT id FROM registration_documents 
-                WHERE session_id = %s AND field_name = %s
-            """, (session_id, field_name))
-            exists = cursor.fetchone()
-            
-            if exists:
-                cursor.execute("""
-                    UPDATE registration_documents SET
-                        file_name = %s, file_path = %s, file_size = %s,
-                        file_type = %s, uploaded_at = CURRENT_TIMESTAMP, status = 'uploaded'
-                    WHERE session_id = %s AND field_name = %s
-                    RETURNING id
-                """, (file_name, file_path, file_size, file_type, session_id, field_name))
-                return cursor.fetchone()["id"]
-            else:
+            # For multiple files with same field_name, append order
+            if batch_id:
+                # Multiple upload - always insert new
                 cursor.execute("""
                     INSERT INTO registration_documents 
                     (session_id, registration_number, field_name, file_name, 
-                     file_path, file_size, file_type)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                     file_path, file_size, file_type, upload_batch_id, file_order)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (session_id, registration_number, field_name, file_name,
-                      file_path, file_size, file_type))
+                      file_path, file_size, file_type, batch_id, file_order))
                 return cursor.fetchone()["id"]
+            else:
+                # Single upload - check if exists
+                cursor.execute("""
+                    SELECT id FROM registration_documents 
+                    WHERE session_id = %s AND field_name = %s AND upload_batch_id IS NULL
+                """, (session_id, field_name))
+                exists = cursor.fetchone()
+                
+                if exists:
+                    cursor.execute("""
+                        UPDATE registration_documents SET
+                            file_name = %s, file_path = %s, file_size = %s,
+                            file_type = %s, uploaded_at = CURRENT_TIMESTAMP, status = 'uploaded'
+                        WHERE session_id = %s AND field_name = %s AND upload_batch_id IS NULL
+                        RETURNING id
+                    """, (file_name, file_path, file_size, file_type, session_id, field_name))
+                    return cursor.fetchone()["id"]
+                else:
+                    cursor.execute("""
+                        INSERT INTO registration_documents 
+                        (session_id, registration_number, field_name, file_name, 
+                         file_path, file_size, file_type, file_order)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                    """, (session_id, registration_number, field_name, file_name,
+                          file_path, file_size, file_type, file_order))
+                    return cursor.fetchone()["id"]
     
     def get_documents(self, session_id: str = None, registration_number: str = None) -> List[Dict]:
         """Get documents by session or registration number"""
@@ -702,17 +867,38 @@ class DatabaseManager:
             if registration_number:
                 cursor.execute("""
                     SELECT * FROM registration_documents WHERE registration_number = %s
-                    ORDER BY uploaded_at
+                    ORDER BY field_name, file_order
                 """, (registration_number,))
             elif session_id:
                 cursor.execute("""
                     SELECT * FROM registration_documents WHERE session_id = %s
-                    ORDER BY uploaded_at
+                    ORDER BY field_name, file_order
                 """, (session_id,))
             else:
                 return []
             
             return [dict(row) for row in cursor.fetchall()]
+    
+    def get_documents_by_field(self, session_id: str, field_name: str) -> List[Dict]:
+        """Get all documents for a specific field"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT * FROM registration_documents 
+                WHERE session_id = %s AND field_name = %s
+                ORDER BY file_order
+            """, (session_id, field_name))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def count_documents_by_field(self, session_id: str, field_name: str) -> int:
+        """Count documents for a specific field"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM registration_documents 
+                WHERE session_id = %s AND field_name = %s
+            """, (session_id, field_name))
+            return cursor.fetchone()["cnt"]
     
     def update_document_status(self, doc_id: int, status: str, notes: str = None) -> bool:
         """Update document verification status"""
@@ -763,23 +949,6 @@ class DatabaseManager:
                 return dict(row)
             return None
     
-    def save_document_with_batch(self, session_id: str, field_name: str, 
-                                  file_name: str, file_path: str, file_size: int,
-                                  file_type: str, registration_number: str = None,
-                                  batch_id: str = None, file_order: int = 0) -> int:
-        """Save document with batch support"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            cursor.execute("""
-                INSERT INTO registration_documents 
-                (session_id, registration_number, field_name, file_name, 
-                 file_path, file_size, file_type, upload_batch_id, file_order)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (session_id, registration_number, field_name, file_name,
-                  file_path, file_size, file_type, batch_id, file_order))
-            return cursor.fetchone()["id"]
-    
     def get_documents_by_batch(self, batch_id: str) -> List[Dict]:
         """Get all documents in a batch"""
         with self.get_connection() as conn:
@@ -797,6 +966,53 @@ class DatabaseManager:
             cursor.execute("DELETE FROM registration_documents WHERE upload_batch_id = %s", (batch_id,))
             cursor.execute("DELETE FROM upload_batches WHERE id = %s", (batch_id,))
             return cursor.rowcount > 0
+    
+    # =========================================================================
+    # TRIGGER MANAGEMENT FOR CONFIG LOADER
+    # =========================================================================
+    
+    def get_active_sessions_for_trigger(self) -> List[Dict]:
+        """Get sessions yang aktif untuk di-trigger"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            cursor.execute("""
+                SELECT 
+                    session_id,
+                    user_id,
+                    current_step,
+                    completion_percentage,
+                    last_activity_at,
+                    idle_trigger_count,
+                    EXTRACT(EPOCH FROM (NOW() - last_activity_at))/60 as idle_minutes
+                FROM registrations 
+                WHERE status = 'draft'
+                AND last_activity_at > NOW() - INTERVAL '24 hours'
+                AND last_activity_at < NOW() - INTERVAL '3 minutes'
+                ORDER BY last_activity_at DESC
+                LIMIT 100
+            """)
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def record_trigger_sent(self, session_id: str, trigger_id: str, 
+                            trigger_type: str, message: str):
+        """Record bahwa trigger sudah dikirim"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Update trigger count di registrations
+            cursor.execute("""
+                UPDATE registrations 
+                SET idle_trigger_count = COALESCE(idle_trigger_count, 0) + 1,
+                    last_trigger_at = NOW()
+                WHERE session_id = %s
+            """, (session_id,))
+            
+            # Insert ke trigger_logs
+            cursor.execute("""
+                INSERT INTO trigger_logs 
+                (session_id, trigger_name, message_sent)
+                VALUES (%s, %s, %s)
+            """, (session_id, trigger_id, message))
     
     # =========================================================================
     # AUTO-TRIGGER MANAGEMENT
@@ -1034,10 +1250,8 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             
-            # Deactivate old configs
             cursor.execute("UPDATE form_configs SET is_active = FALSE WHERE is_active = TRUE")
             
-            # Insert new config
             cursor.execute("""
                 INSERT INTO form_configs (config_key, config_data, version, is_active)
                 VALUES (%s, %s, %s, TRUE)
@@ -1097,7 +1311,7 @@ class DatabaseManager:
             return [dict(row) for row in cursor.fetchall()][::-1]
     
     # =========================================================================
-    # TRACKING & STATISTICS
+    # STATISTICS & CLEANUP
     # =========================================================================
     
     def get_registration_stats(self, user_id: str = None) -> Dict:
@@ -1119,7 +1333,6 @@ class DatabaseManager:
             
             status_counts = {row["status"]: row["count"] for row in cursor.fetchall()}
             
-            # Today's registrations
             if user_id:
                 cursor.execute("""
                     SELECT COUNT(*) as count FROM registrations
@@ -1132,7 +1345,6 @@ class DatabaseManager:
                 """)
             today = cursor.fetchone()["count"]
             
-            # This week
             if user_id:
                 cursor.execute("""
                     SELECT COUNT(*) as count FROM registrations

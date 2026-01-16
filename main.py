@@ -74,14 +74,14 @@ async def lifespan(app: FastAPI):
     print("   ✅ Rating system ready")
     
     # 4. Load dynamic config
-    print("\n📋 Loading configuration...")
-    try:
-        from transaksional.app.config_loader import get_config_loader
-        loader = get_config_loader()
-        print(f"   ✅ Config source: {loader.source.value}")
-        print(f"   ✅ Fallback: {loader.fallback.value}")
-    except Exception as e:
-        print(f"   ⚠️  Config loader warning: {e}")
+    # print("\n📋 Loading configuration...")
+    # try:
+    #     from transaksional.app.config_loader import get_config_loader
+    #     loader = get_config_loader()
+    #     print(f"   ✅ Config source: {loader.source.value}")
+    #     print(f"   ✅ Fallback: {loader.fallback.value}")
+    # except Exception as e:
+    #     print(f"   ⚠️  Config loader warning: {e}")
     
     print("\n" + "="*60)
     print(f"✅ YPI Chatbot API Ready - Version {settings.app_version}")

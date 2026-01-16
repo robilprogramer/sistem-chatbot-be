@@ -1,0 +1,96 @@
+# ============================================================================
+# CONFIG.YAML - RAG Configuration
+# ============================================================================
+# Copy file ini ke project Anda dan sesuaikan
+
+# ============================================================================
+# EMBEDDING CONFIGURATION
+# ============================================================================
+embeddings:
+  model: "openai"  # openai atau huggingface
+  
+  openai:
+    model_name: "text-embedding-3-small"
+    dimensions: 1536
+  
+  huggingface:
+    model_name: "sentence-transformers/all-MiniLM-L6-v2"
+    dimensions: 384
+    device: "cpu"  # cpu atau cuda
+
+# ============================================================================
+# CHUNKING CONFIGURATION
+# ============================================================================
+chunking:
+  strategy: "fixed_size"
+  
+  fixed_size:
+    # REKOMENDASI untuk dokumen Indonesia:
+    # - chunk_size: 800-1200 (tergantung kompleksitas)
+    # - chunk_overlap: 150-250 (untuk konteks)
+    chunk_size: 1000
+    chunk_overlap: 200
+    separators:
+      - "\n\n"  # Paragraph break
+      - "\n"    # Line break
+      - "."     # Sentence
+      - " "     # Word
+      - ""      # Character
+  
+  # Semantic chunking (optional, requires OpenAI)
+  semantic:
+    use_openai: true
+    breakpoint_threshold_type: "percentile"
+    breakpoint_threshold: 95
+    min_length: 1200
+
+# ============================================================================
+# VECTOR DATABASE
+# ============================================================================
+vectordb:
+  chroma:
+    collection_name: "alazhar_knowledge"
+    persist_directory: "data/chroma_db"
+    distance_function: "cosine"  # cosine, l2, atau ip
+
+# ============================================================================
+# RETRIEVAL CONFIGURATION
+# ============================================================================
+retrieval:
+  # Jumlah chunks awal yang di-retrieve
+  top_k: 5
+  
+  # Minimum similarity score (0-1)
+  # Semakin tinggi = semakin strict
+  similarity_threshold: 0.5
+  
+  # Maximum dokumen unik yang diambil
+  # Ini penting untuk agregasi
+  max_documents: 3
+  
+  # KUNCI: Fetch semua chunks dari dokumen yang sama
+  # Set true untuk menggabungkan chunks
+  fetch_full_document: true
+
+# ============================================================================
+# LLM CONFIGURATION
+# ============================================================================
+llm:
+  provider: "openai"  # openai, gemini, atau ollama
+  
+  openai:
+    model: "gpt-4o-mini"  # atau gpt-4o untuk hasil lebih baik
+    temperature: 0.1      # Rendah untuk jawaban faktual
+    max_tokens: 2000
+    streaming: false
+  
+  gemini:
+    model: "gemini-1.5-flash"
+    temperature: 0.1
+    max_tokens: 2000
+  
+  ollama:
+    model: "llama3"
+    temperature: 0.1
+    max_tokens: 2000
+    base_url: "http://localhost:11434"
