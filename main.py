@@ -11,9 +11,9 @@ from informasional.utils.db import Base, engine
 from informasional.api.document_router import router as document_router
 from informasional.api.chunking_router import router as chunking_router
 from informasional.api.embeding_router import router as embedding_router
-from informasional.api.vectorstore_router import router as vectorstore_router
 from informasional.api.chat_router import router as chat_router
-from informasional.api.statistics_router import router as statistics_router
+from informasional.api.knowledgebase_router import router as knowledgebase_router
+from informasional.api.quick_questions_router import router as quick_questions_router 
 from informasional.models.master_cabang import MasterCabangModel
 from informasional.models.master_jenjang import MasterJenjangModel
 from informasional.models.master_kategori import MasterKategoriModel
@@ -25,6 +25,8 @@ from transaksional.api.upload_router import router as upload_router
 from transaksional.api.status_router import router as status_router
 from transaksional.api.config_router import router as config_router
 from transaksional.api.admin_router import router as admin_router
+# main.py
+from transaksional.api.registration_router  import router  as registration_router
 # Core modules
 from transaksional.app.config import settings
 from transaksional.app.database import init_database, get_db_manager
@@ -73,16 +75,6 @@ async def lifespan(app: FastAPI):
     rating_manager = init_rating_manager(db_manager=db)
     print("   ✅ Rating system ready")
     
-    # 4. Load dynamic config
-    # print("\n📋 Loading configuration...")
-    # try:
-    #     from transaksional.app.config_loader import get_config_loader
-    #     loader = get_config_loader()
-    #     print(f"   ✅ Config source: {loader.source.value}")
-    #     print(f"   ✅ Fallback: {loader.fallback.value}")
-    # except Exception as e:
-    #     print(f"   ⚠️  Config loader warning: {e}")
-    
     print("\n" + "="*60)
     print(f"✅ YPI Chatbot API Ready - Version {settings.app_version}")
     print(f"   Host: {settings.host}:{settings.port}")
@@ -103,7 +95,6 @@ async def lifespan(app: FastAPI):
     trigger_manager = get_trigger_manager()
     trigger_manager.stop_background_checker()
     print("   ✅ Background checker stopped")
-    
     print("\n✅ Shutdown complete\n")
 
 
@@ -124,7 +115,7 @@ app = FastAPI(
     - ⭐ Rating System
     - 🔄 Dynamic Config (YAML/Database)
     """,
-    version="2.0.0",
+    version="1.0.0",
     lifespan=lifespan
 )
 
@@ -149,10 +140,10 @@ app.add_middleware(
 
 app.include_router(document_router)
 app.include_router(chunking_router)
-app.include_router(vectorstore_router)
 app.include_router(embedding_router)
-app.include_router(statistics_router)
 app.include_router(chat_router)
+app.include_router(knowledgebase_router) 
+app.include_router(quick_questions_router) 
 
 
 # =============================================================================
@@ -165,68 +156,12 @@ app.include_router(upload_router)
 app.include_router(status_router)
 app.include_router(config_router)
 app.include_router(admin_router)
+app.include_router(registration_router)
 
-
-# =============================================================================
-# HEALTH CHECK & INFO ENDPOINTS
-# =============================================================================
-
-@app.get("/", tags=["Health"])
-async def root():
-    """Root endpoint - API info"""
-    return {
-        "name": "YPI Al-Azhar Chatbot API",
-        "version": "1.0.0",
-        "status": "running",
-        "timestamp": datetime.now().isoformat(),
-        "features": {
-            "informational_chatbot": True,
-            "transactional_chatbot": True,
-            "multiple_upload": True,
-            "auto_trigger": True,
-            "rating_system": True,
-            "dynamic_config": True
-        }
-    }
     
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     return FileResponse("static/favicon.ico")
-
-
-@app.get("/health", tags=["Health"])
-async def health_check():
-    """Health check endpoint"""
-    trigger_manager = get_trigger_manager()
-    
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "components": {
-            "database": "connected",
-            "auto_trigger": {
-                "running": trigger_manager._running,
-                "active_sessions": len(trigger_manager._sessions),
-                "triggers_configured": len(trigger_manager._triggers)
-            }
-        }
-    }
-
-
-@app.get("/stats", tags=["Health"])
-async def get_stats():
-    """Get system statistics"""
-    trigger_manager = get_trigger_manager()
-    rating_manager = get_rating_manager()
-    
-    trigger_stats = trigger_manager.get_stats()
-    rating_stats = rating_manager.get_rating_stats()
-    
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "auto_trigger": trigger_stats,
-        "ratings": rating_stats
-    }
 
 
 # =============================================================================

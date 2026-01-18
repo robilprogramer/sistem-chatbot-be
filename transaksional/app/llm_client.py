@@ -18,6 +18,18 @@ from transaksional.app.config import settings
 
 class BaseLLMClient(ABC):
     @abstractmethod
+    async def explain_examples(self, field: Dict[str, Any], examples: List[str],
+                               user_message: str, context: str) -> str:
+        """
+        Beri penjelasan / contoh untuk sebuah field berdasarkan contoh yang tersedia.
+        field: dict dengan id, label, type, ...
+        examples: list contoh dari DB
+        user_message: isi pesan user yang minta contoh (dipakai untuk konteks)
+        context: chat context (recent messages)
+        """
+        pass
+
+    @abstractmethod
     async def generate(self, messages: List[Dict[str, str]], temperature: float = 0.7,
                       max_tokens: int = 500, json_mode: bool = False) -> str:
         pass
@@ -44,6 +56,39 @@ class OpenAIClient(BaseLLMClient):
         self.default_temperature = config.get("temperature", 0.7)
         self.default_max_tokens = config.get("max_tokens", 500)
     
+    async def explain_examples(self, field: Dict[str, Any], examples: List[str],
+                               user_message: str, context: str) -> str:
+        # build prompt
+        examples_text = "\n".join([f"- {e}" for e in examples[:10]])  # batasi ke 10
+        system_prompt = (
+            f"Kamu adalah asisten pendaftaran. User menanyakan contoh untuk field: "
+            f"'{field.get('label')}' (id: {field.get('id')}).\n"
+            f"Berikan jawaban singkat, ramah, dan kontekstual. "
+            f"Jika user meminta lebih banyak contoh, sebutkan bahwa ada contoh lain dan bagaimana meminta."
+        )
+        user_prompt = (
+            f"Pesan user: \"{user_message}\"\n\n"
+            f"Contoh yang tersedia untuk field '{field.get('label')}':\n{examples_text}\n\n"
+            "Jawab dengan bahasa Indonesia. Tampilkan contoh sebagai daftar, "
+            "dan beri instruksi singkat bagaimana user bisa memilih/menyalin contoh."
+        )
+        try:
+            response = await self.generate(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=200,
+            )
+            return response.strip()
+        except Exception as e:
+            print(f"OpenAI explain_examples error: {e}")
+            # fallback simple
+            if examples:
+                return "Contoh:\n" + "\n".join([f"- {e}" for e in examples[:5]])
+            return "Maaf, contoh tidak tersedia saat ini."
+
     async def generate(self, messages: List[Dict[str, str]], temperature: float = None,
                       max_tokens: int = None, json_mode: bool = False) -> str:
         kwargs = {
@@ -200,7 +245,29 @@ class AnthropicClient(BaseLLMClient):
         self.vision_model = config.get("vision_model", "claude-3-sonnet-20240229")
         self.default_temperature = config.get("temperature", 0.7)
         self.default_max_tokens = config.get("max_tokens", 500)
-    
+    async def explain_examples(self, field: Dict[str, Any], examples: List[str],
+                               user_message: str, context: str) -> str:
+        examples_text = "\n".join([f"- {e}" for e in examples[:10]])
+        system_prompt = (
+            f"User meminta contoh untuk field '{field.get('label')}'. "
+            "Jawab singkat dan ramah dalam bahasa Indonesia, tampilkan contoh sebagai daftar."
+        )
+        user_prompt = f"Pesan user: \"{user_message}\"\n\nContoh:\n{examples_text}"
+        try:
+            response = await self.generate(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                max_tokens=200,
+                json_mode=False
+            )
+            return response.strip()
+        except Exception as e:
+            print(f"Anthropic explain_examples error: {e}")
+            return "Contoh:\n" + ("\n".join(examples[:5]) if examples else "Tidak ada contoh.")
+
     async def generate(self, messages: List[Dict[str, str]], temperature: float = None,
                       max_tokens: int = None, json_mode: bool = False) -> str:
         system_message = ""
@@ -325,7 +392,13 @@ class MockLLMClient(BaseLLMClient):
         if json_mode:
             return '{}'
         return "Mock response"
-    
+    async def explain_examples(self, field: Dict[str, Any], examples: List[str],
+                               user_message: str, context: str) -> str:
+        if not examples:
+            return f"Tidak ada contoh tersimpan untuk {field.get('label')}."
+        # return up to 5 contoh
+        return f"Contoh {field.get('label')}:\n" + "\n".join([f"- {e}" for e in examples[:5]])
+
     async def analyze_image(self, image_base64: str, media_type: str, 
                            prompt: str) -> Optional[str]:
         """Mock image analysis - returns unknown for testing"""

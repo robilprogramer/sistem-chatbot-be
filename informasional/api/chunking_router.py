@@ -2,33 +2,60 @@
 Chunking Router - Process documents dari DB ke chunks
 
 FLOW:
-1. Baca Document dengan status COMPLETED
-2. Chunk content
+1. Document dengan status COMPLETED
+2. Chunk content menggunakan EnhancedChunker
 3. Simpan chunks ke ChunkModel dengan status 'pending'
 4. Chunks siap untuk di-embed
+
+ENDPOINTS:
+- POST /chunks/process-pending     : Auto process pending documents
+- POST /chunks/process/{id}        : Process specific document
+- GET  /chunks/stats               : Get chunking statistics
+- GET  /chunks/                    : List all chunks
+- GET  /chunks/{id}                : Get chunk by ID
+- GET  /chunks/by-document/{doc_id}: Get chunks by document_id
+- DELETE /chunks/{id}              : Delete chunk
+- DELETE /chunks/by-source/{id}    : Delete chunks by source document
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List,Optional
+from sqlalchemy import func
+from typing import List, Optional
+from datetime import datetime
+
 from informasional.utils.enhanced_chunker import EnhancedChunker, DocumentProcessor
 from informasional.utils.metadata_extractor import MetadataExtractor
 from informasional.models.document import Document, DocumentStatus
+from informasional.models.chunk import ChunkModel
 from informasional.utils.db import SessionLocal
 from informasional.repositories.master_repository import MasterRepository
 from informasional.repositories.document_repository import DocumentRepository
-from informasional.schemas.chunking_schema import ChunkingRequest, ChunkingResponse, ChunkResponse, StandardResponse,ChunkUpdateRequest,ChunkBulkUpdateRequest
+from informasional.schemas.chunking_schema import (
+    ChunkingResponse, 
+    ChunkResponse, 
+    StandardResponse,ChunkUpdateRequest
+)
 from transaksional.app.config import settings
-from informasional.models.chunk import ChunkModel
 
 
-router = APIRouter(prefix=f"{settings.informational_prefix}/chunks", tags=["Chunking"])
+# ============================================================================
+# ROUTER SETUP
+# ============================================================================
+router = APIRouter(
+    prefix=f"{settings.informational_prefix}/chunks", 
+    tags=["Chunking"]
+)
+
+# Config path - sesuaikan dengan struktur project
+CONFIG_PATH = "informasional/config/config.yaml"
 
 
-# ==============================
-# DB Dependency
-# ==============================
+# ============================================================================
+# DEPENDENCIES
+# ============================================================================
 def get_db():
+    """Database session dependency"""
     db = SessionLocal()
     try:
         yield db
@@ -36,9 +63,22 @@ def get_db():
         db.close()
 
 
-# ==============================
+def get_chunker() -> EnhancedChunker:
+    """Get chunker instance dengan config dari YAML"""
+    return EnhancedChunker(config_path=CONFIG_PATH)
+
+
+def get_processor(db: Session) -> DocumentProcessor:
+    """Get document processor dengan chunker dan metadata extractor"""
+    chunker = get_chunker()
+    master_repo = MasterRepository(db)
+    extractor = MetadataExtractor(master_repo)
+    return DocumentProcessor(chunker=chunker, metadata_extractor=extractor)
+
+
+# ============================================================================
 # HELPER: Save chunks ke database
-# ==============================
+# ============================================================================
 def save_chunks_to_db(
     db: Session,
     chunks: List,  # List of langchain Document
@@ -46,7 +86,18 @@ def save_chunks_to_db(
 ) -> List[ChunkModel]:
     """
     Simpan chunks ke database dengan document_id tracking
+    
+    Args:
+        db: Database session
+        chunks: List of langchain Document objects
+        source_document_id: FK ke table documents
+    
+    Returns:
+        List of saved ChunkModel instances
     """
+    if not chunks:
+        return []
+    
     saved_chunks = []
     
     for chunk in chunks:
@@ -55,7 +106,6 @@ def save_chunks_to_db(
         
         metadata = chunk.metadata or {}
         
-        # Create ChunkModel
         chunk_model = ChunkModel(
             # Document tracking
             document_id=metadata.get("document_id", ""),
@@ -88,12 +138,12 @@ def save_chunks_to_db(
     return saved_chunks
 
 
-# ==============================
-# API: Process Documents (Auto dari DB)
-# ==============================
+# ============================================================================
+# API: Process Pending Documents (Auto)
+# ============================================================================
 @router.post("/process-pending", response_model=StandardResponse)
 def process_pending_documents(
-    limit: int = 10,
+    limit: int = Query(default=10, ge=1, le=100, description="Max documents to process"),
     db: Session = Depends(get_db)
 ):
     """
@@ -102,7 +152,10 @@ def process_pending_documents(
     Flow:
     1. Ambil documents dengan status COMPLETED
     2. Filter yang belum punya chunks
-    3. Chunk dan simpan
+    3. Chunk dan simpan ke database
+    
+    Returns:
+        StandardResponse dengan detail processing
     """
     # Get completed documents
     doc_repo = DocumentRepository(db)
@@ -115,80 +168,87 @@ def process_pending_documents(
         return StandardResponse(
             status_code=200,
             message="No completed documents to process",
-            data={"processed": 0}
+            data={"processed": 0, "total_chunks": 0}
         )
     
-    # Initialize chunker
-    chunker = EnhancedChunker(config_path="informasional/config/config.yaml")
-    master_repo = MasterRepository(db)
-    extractor = MetadataExtractor(master_repo)
-    processor = DocumentProcessor(chunker=chunker, metadata_extractor=extractor)
+    # Initialize processor
+    processor = get_processor(db)
     
     processed_count = 0
-    total_chunks = 0
+    total_chunks_created = 0
     results = []
+    errors = []
     
     for doc in documents:
-        # Skip jika sudah ada chunks untuk document ini
-        existing_chunks = db.query(ChunkModel).filter(
-            ChunkModel.source_document_id == doc.id
-        ).count()
-        
-        if existing_chunks > 0:
-            continue
-        
-        # Skip jika tidak ada content
-        if not doc.raw_text or not doc.raw_text.strip():
-            continue
-        
-        # Build metadata dari document
-        metadata = {
-            "source": doc.original_filename or doc.filename,
-            "filename": doc.original_filename or doc.filename,
-            "file_type": doc.mime_type,
-            "total_pages": doc.total_pages,
-            "extraction_method": doc.extraction_method,
-        }
-        
-        # Chunk document
-        chunks = processor.process_document(
-            filename=doc.original_filename or doc.filename,
-            content=doc.raw_text,
-            metadata=metadata,
-            source_document_id=doc.id
-        )
-        
-        # Save chunks
-        saved = save_chunks_to_db(db, chunks, source_document_id=doc.id)
-        
-        processed_count += 1
-        total_chunks += len(saved)
-        
-        results.append({
-            "document_id": doc.id,
-            "filename": doc.original_filename,
-            "chunks_created": len(saved),
-            "document_tracking_id": chunks[0].metadata.get("document_id") if chunks else None
-        })
+        try:
+            # Skip jika sudah ada chunks untuk document ini
+            existing_count = db.query(func.count(ChunkModel.id)).filter(
+                ChunkModel.source_document_id == doc.id
+            ).scalar()
+            
+            if existing_count > 0:
+                continue
+            
+            # Skip jika tidak ada content
+            if not doc.raw_text or not doc.raw_text.strip():
+                continue
+            
+            # Build metadata dari document
+            metadata = {
+                "source": doc.original_filename or doc.filename,
+                "filename": doc.original_filename or doc.filename,
+                "file_type": doc.mime_type,
+                "total_pages": doc.total_pages or 0,
+                "extraction_method": doc.extraction_method or "",
+            }
+            
+            # Process document
+            chunks = processor.process_document(
+                filename=doc.original_filename or doc.filename,
+                content=doc.raw_text,
+                metadata=metadata,
+                source_document_id=doc.id
+            )
+            
+            # Save chunks
+            saved = save_chunks_to_db(db, chunks, source_document_id=doc.id)
+            
+            processed_count += 1
+            total_chunks_created += len(saved)
+            
+            results.append({
+                "document_id": doc.id,
+                "filename": doc.original_filename,
+                "chunks_created": len(saved),
+                "document_tracking_id": chunks[0].metadata.get("document_id") if chunks else None
+            })
+            
+        except Exception as e:
+            errors.append({
+                "document_id": doc.id,
+                "filename": doc.original_filename,
+                "error": str(e)
+            })
     
     return StandardResponse(
         status_code=200,
-        message=f"Processed {processed_count} documents, created {total_chunks} chunks",
+        message=f"Processed {processed_count} documents, created {total_chunks_created} chunks",
         data={
             "processed_documents": processed_count,
-            "total_chunks": total_chunks,
-            "details": results
+            "total_chunks": total_chunks_created,
+            "details": results,
+            "errors": errors if errors else None
         }
     )
 
 
-# ==============================
+# ============================================================================
 # API: Process Specific Document
-# ==============================
+# ============================================================================
 @router.post("/process/{document_id}", response_model=StandardResponse)
 def process_document_by_id(
     document_id: int,
-    force: bool = False,  # Force re-chunk even if chunks exist
+    force: bool = Query(default=False, description="Force re-chunk even if chunks exist"),
     db: Session = Depends(get_db)
 ):
     """
@@ -197,7 +257,11 @@ def process_document_by_id(
     Args:
         document_id: ID dari table documents
         force: Jika True, hapus chunks lama dan buat ulang
+    
+    Returns:
+        StandardResponse dengan detail chunks yang dibuat
     """
+    # Get document
     doc_repo = DocumentRepository(db)
     doc = doc_repo.get_by_id(document_id)
     
@@ -207,7 +271,7 @@ def process_document_by_id(
     if doc.status != DocumentStatus.COMPLETED:
         raise HTTPException(
             status_code=400, 
-            detail=f"Document not ready. Status: {doc.status}"
+            detail=f"Document not ready. Current status: {doc.status.value}"
         )
     
     if not doc.raw_text:
@@ -224,7 +288,8 @@ def process_document_by_id(
             message=f"Document already has {len(existing_chunks)} chunks. Use force=true to re-chunk.",
             data={
                 "document_id": document_id,
-                "existing_chunks": len(existing_chunks)
+                "existing_chunks": len(existing_chunks),
+                "action": "skipped"
             }
         )
     
@@ -233,23 +298,21 @@ def process_document_by_id(
         for chunk in existing_chunks:
             db.delete(chunk)
         db.commit()
+        print(f"🗑️  Deleted {len(existing_chunks)} existing chunks")
     
-    # Initialize chunker
-    chunker = EnhancedChunker(config_path="informasional/config/config.yaml")
-    master_repo = MasterRepository(db)
-    extractor = MetadataExtractor(master_repo)
-    processor = DocumentProcessor(chunker=chunker, metadata_extractor=extractor)
+    # Initialize processor
+    processor = get_processor(db)
     
     # Build metadata
     metadata = {
         "source": doc.original_filename or doc.filename,
         "filename": doc.original_filename or doc.filename,
-        "file_type": doc.file_type,
-        "total_pages": doc.total_pages,
-        "extraction_method": doc.extraction_method,
+        "file_type": doc.mime_type,
+        "total_pages": doc.total_pages or 0,
+        "extraction_method": doc.extraction_method or "",
     }
     
-    # Chunk
+    # Process
     chunks = processor.process_document(
         filename=doc.original_filename or doc.filename,
         content=doc.raw_text,
@@ -268,163 +331,128 @@ def process_document_by_id(
             "filename": doc.original_filename,
             "chunks_created": len(saved),
             "document_tracking_id": chunks[0].metadata.get("document_id") if chunks else None,
-            "chunk_ids": [c.id for c in saved]
+            "chunk_ids": [c.id for c in saved],
+            "action": "re-chunked" if force and existing_chunks else "chunked"
         }
     )
 
 
-# ==============================
-# API: Manual Chunk (Original)
-# ==============================
-@router.post("/process", response_model=ChunkingResponse)
-def chunk_documents(payload: ChunkingRequest, db: Session = Depends(get_db)):
+# ============================================================================
+# API: Get Statistics
+# ============================================================================
+@router.get("/stats", response_model=StandardResponse)
+def get_chunk_statistics(db: Session = Depends(get_db)):
     """
-    Manual chunking endpoint (backward compatible)
+    Get comprehensive chunk statistics
+    
+    Returns:
+        - Count by status (pending, embedded)
+        - Average chunk length
+        - Chunks per document distribution
     """
-    chunker = EnhancedChunker(config_path="informasional/config/config.yaml")
-    master_repo = MasterRepository(db)
-    docrepo = DocumentRepository(db)
-    extractor = MetadataExtractor(master_repo)
-    processor = DocumentProcessor(chunker=chunker, metadata_extractor=extractor)
-
-    documents = []
+    # Count by status
+    status_counts = db.query(
+        ChunkModel.status,
+        func.count(ChunkModel.id)
+    ).group_by(ChunkModel.status).all()
     
-    for doc in payload.documents:
-        doc_data = doc.dict()
-        source_doc_id = None
-
-        # CASE: content kosong → ambil dari DB
-        if not doc_data.get("content") or not doc_data["content"].strip():
-            db_doc = docrepo.get_by_filename(doc_data["filename"])
-
-            if not db_doc or not db_doc.raw_text:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Document '{doc_data['filename']}' has no extracted text"
-                )
-
-            doc_data["filename"] = db_doc.original_filename
-            doc_data["content"] = db_doc.raw_text
-            source_doc_id = db_doc.id
-        
-        doc_data["source_document_id"] = source_doc_id
-        documents.append(doc_data)
+    status_dict = {status: count for status, count in status_counts}
     
-    chunks = processor.process_multiple_documents(documents)
-    saved_chunks = save_chunks_to_db(db, chunks)
-
-    return ChunkingResponse(
-        total_chunks=len(saved_chunks),
-        chunks=[
-            ChunkResponse(
-                id=c.id,
-                content=c.content, 
-                metadata=c.metadata_json
-            ) 
-            for c in saved_chunks if c is not None
-        ]
-    )
-
-
-# ==============================
-# API: Get Pending Chunks Count
-# ==============================
-@router.get("/pending/count", response_model=StandardResponse)
-def get_pending_count(db: Session = Depends(get_db)):
-    """
-    Get count of pending chunks (ready for embedding)
-    """
-    pending_count = db.query(ChunkModel).filter(
-        ChunkModel.status == "pending"
-    ).count()
+    # Total and average
+    total_count = sum(status_dict.values())
     
-    embedded_count = db.query(ChunkModel).filter(
-        ChunkModel.status == "embedded"
-    ).count()
+    avg_length = db.query(
+        func.avg(func.length(ChunkModel.content))
+    ).scalar() or 0
     
-    total_count = db.query(ChunkModel).count()
+    # Unique documents
+    unique_docs = db.query(
+        func.count(func.distinct(ChunkModel.document_id))
+    ).scalar() or 0
+    
+    # Get chunker config
+    chunker = get_chunker()
     
     return StandardResponse(
         status_code=200,
-        message="Chunk statistics",
+        message="Chunk statistics retrieved",
         data={
-            "pending": pending_count,
-            "embedded": embedded_count,
-            "total": total_count
+            "total_chunks": total_count,
+            "by_status": {
+                "pending": status_dict.get("pending", 0),
+                "embedded": status_dict.get("embedded", 0),
+                "other": sum(v for k, v in status_dict.items() if k not in ["pending", "embedded"])
+            },
+            "unique_documents": unique_docs,
+            "avg_chunk_length": round(float(avg_length), 2),
+            "chunker_config": chunker.config
         }
     )
 
 
-# ==============================
-# API: Get Chunks by Document ID
-# ==============================
-@router.get("/by-document/{document_id}", response_model=StandardResponse)
-def get_chunks_by_document_id(document_id: str, db: Session = Depends(get_db)):
-    """
-    Get all chunks untuk document_id tertentu
-    (document_id adalah tracking ID, bukan DB ID)
-    """
-    chunks = db.query(ChunkModel).filter(
-        ChunkModel.document_id == document_id
-    ).order_by(ChunkModel.chunk_index).all()
-    
-    if not chunks:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No chunks found for document_id: {document_id}"
-        )
-    
-    return StandardResponse(
-        status_code=200,
-        message=f"{len(chunks)} chunks retrieved",
-        data=[
-            ChunkResponse(
-                id=c.id,
-                content=c.content,
-                metadata=c.metadata_json
-            )
-            for c in chunks
-        ]
-    )
-
-
-# ==============================
-# CRUD: Get all chunks
-# ==============================
+# ============================================================================
+# API: List Chunks
+# ============================================================================
 @router.get("/", response_model=StandardResponse)
 def get_chunks(
-    skip: int = 0, 
-    limit: int = 100, 
-    status: Optional[str] = None,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
+    status: Optional[str] = Query(default=None, description="Filter by status: pending, embedded"),
+    document_id: Optional[str] = Query(default=None, description="Filter by document_id"),
     db: Session = Depends(get_db)
 ):
-    """Get all chunks with optional status filter"""
+    """
+    Get all chunks with optional filters
+    
+    Args:
+        skip: Pagination offset
+        limit: Max results (1-200)
+        status: Filter by status
+        document_id: Filter by document tracking ID
+    """
     query = db.query(ChunkModel)
     
     if status:
         query = query.filter(ChunkModel.status == status)
     
-    chunks = query.offset(skip).limit(limit).all()
+    if document_id:
+        query = query.filter(ChunkModel.document_id == document_id)
+    
+    # Get total count
+    total = query.count()
+    
+    # Get paginated results
+    chunks = query.order_by(
+        ChunkModel.document_id, 
+        ChunkModel.chunk_index
+    ).offset(skip).limit(limit).all()
     
     return StandardResponse(
         status_code=200,
-        message=f"{len(chunks)} chunks retrieved",
-        data=[
-            ChunkResponse(
-                id=c.id,
-                content=c.content, 
-                metadata=c.metadata_json
-            ) 
-            for c in chunks
-        ]
+        message=f"Retrieved {len(chunks)} chunks",
+        data={
+            "total": total,
+            "skip": skip,
+            "limit": limit,
+            "chunks": [
+                ChunkResponse(
+                    id=c.id,
+                    # content=c.content[:200] + "..." if len(c.content) > 200 else c.content,
+                    content=c.content,
+                    metadata=c.metadata_json
+                )
+                for c in chunks
+            ]
+        }
     )
 
 
-# ==============================
-# CRUD: Get chunk by ID
-# ==============================
+# ============================================================================
+# API: Get Chunk by ID
+# ============================================================================
 @router.get("/{chunk_id}", response_model=StandardResponse)
 def get_chunk(chunk_id: int, db: Session = Depends(get_db)):
+    """Get single chunk by ID with full content"""
     chunk = db.query(ChunkModel).filter(ChunkModel.id == chunk_id).first()
     
     if not chunk:
@@ -440,6 +468,83 @@ def get_chunk(chunk_id: int, db: Session = Depends(get_db)):
         )
     )
 
+
+# ============================================================================
+# API: Get Chunks by Document Tracking ID
+# ============================================================================
+@router.get("/by-document/{document_id}", response_model=StandardResponse)
+def get_chunks_by_document_id(document_id: str, db: Session = Depends(get_db)):
+    """
+    Get all chunks untuk document_id tertentu (document tracking ID)
+    
+    Chunks akan diurutkan berdasarkan chunk_index
+    """
+    chunks = db.query(ChunkModel).filter(
+        ChunkModel.document_id == document_id
+    ).order_by(ChunkModel.chunk_index).all()
+    
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No chunks found for document_id: {document_id}"
+        )
+    
+    return StandardResponse(
+        status_code=200,
+        message=f"{len(chunks)} chunks retrieved",
+        data={
+            "document_id": document_id,
+            "total_chunks": chunks[0].total_chunks if chunks else 0,
+            "chunks": [
+                ChunkResponse(
+                    id=c.id,
+                    content=c.content,
+                    metadata=c.metadata_json
+                )
+                for c in chunks
+            ]
+        }
+    )
+
+
+# ============================================================================
+# API: Get Chunks by Source Document ID
+# ============================================================================
+@router.get("/by-source/{source_document_id}", response_model=StandardResponse)
+def get_chunks_by_source_document(
+    source_document_id: int, 
+    db: Session = Depends(get_db)
+):
+    """
+    Get all chunks untuk source_document_id (FK ke table documents)
+    """
+    chunks = db.query(ChunkModel).filter(
+        ChunkModel.source_document_id == source_document_id
+    ).order_by(ChunkModel.chunk_index).all()
+    
+    if not chunks:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No chunks found for source_document_id: {source_document_id}"
+        )
+    
+    return StandardResponse(
+        status_code=200,
+        message=f"{len(chunks)} chunks retrieved",
+        data={
+            "source_document_id": source_document_id,
+            "document_id": chunks[0].document_id if chunks else None,
+            "total_chunks": len(chunks),
+            "chunks": [
+                ChunkResponse(
+                    id=c.id,
+                    content=c.content,
+                    metadata=c.metadata_json
+                )
+                for c in chunks
+            ]
+        }
+    )
 
 # ==============================
 # CRUD: Update chunk
@@ -470,82 +575,136 @@ def update_chunk(chunk_id: int, payload: ChunkUpdateRequest, db: Session = Depen
     )
 
 
-# ==============================
-# CRUD: Delete chunk
-# ==============================
+# ============================================================================
+# API: Delete Chunk
+# ============================================================================
 @router.delete("/{chunk_id}", response_model=StandardResponse)
 def delete_chunk(chunk_id: int, db: Session = Depends(get_db)):
+    """Delete single chunk by ID"""
     chunk = db.query(ChunkModel).filter(ChunkModel.id == chunk_id).first()
     
     if not chunk:
         raise HTTPException(status_code=404, detail="Chunk not found")
     
+    document_id = chunk.document_id
     db.delete(chunk)
     db.commit()
     
     return StandardResponse(
         status_code=200,
         message="Chunk deleted successfully",
-        data=None
+        data={
+            "deleted_chunk_id": chunk_id,
+            "document_id": document_id
+        }
     )
 
 
-# ==============================
-# CRUD: Get chunks by filename
-# ==============================
-@router.get("/by-filename/{filename}", response_model=StandardResponse)
-def get_chunks_by_filename(filename: str, db: Session = Depends(get_db)):
+# ============================================================================
+# API: Delete Chunks by Source Document
+# ============================================================================
+@router.delete("/by-source/{source_document_id}", response_model=StandardResponse)
+def delete_chunks_by_source_document(
+    source_document_id: int, 
+    db: Session = Depends(get_db)
+):
+    """
+    Delete all chunks untuk source_document_id
+    
+    Berguna untuk re-chunking document
+    """
     chunks = db.query(ChunkModel).filter(
-        ChunkModel.filename == filename
-    ).order_by(ChunkModel.chunk_index).all()
-
+        ChunkModel.source_document_id == source_document_id
+    ).all()
+    
     if not chunks:
         raise HTTPException(
             status_code=404,
-            detail=f"No chunks found for filename: {filename}"
+            detail=f"No chunks found for source_document_id: {source_document_id}"
         )
-
+    
+    count = len(chunks)
+    document_id = chunks[0].document_id if chunks else None
+    
+    for chunk in chunks:
+        db.delete(chunk)
+    db.commit()
+    
     return StandardResponse(
         status_code=200,
-        message=f"{len(chunks)} chunks retrieved for filename {filename}",
-        data=[
-            ChunkResponse(
-                id=c.id,
-                content=c.content,
-                metadata=c.metadata_json
-            )
-            for c in chunks
-        ]
+        message=f"Deleted {count} chunks",
+        data={
+            "source_document_id": source_document_id,
+            "document_id": document_id,
+            "deleted_count": count
+        }
     )
 
 
-# ==============================
-# CRUD: Bulk update by filename
-# ==============================
-@router.put("/bulk-update/by-filename/{filename}", response_model=StandardResponse)
-def bulk_update_chunks_by_filename(
-    filename: str,
-    payload: ChunkBulkUpdateRequest,
+# ============================================================================
+# API: Preview Chunking (Dry Run)
+# ============================================================================
+@router.post("/preview/{document_id}", response_model=StandardResponse)
+def preview_chunking(
+    document_id: int,
     db: Session = Depends(get_db)
 ):
-    repo = MasterRepository(db)
-
-    updated_count = repo.bulk_update_chunks_by_filename(
-        filename=filename,
-        updates=[item.dict(exclude_unset=True) for item in payload.chunks]
+    """
+    Preview hasil chunking tanpa menyimpan ke database
+    
+    Berguna untuk testing dan tuning chunk_size/overlap
+    """
+    # Get document
+    doc_repo = DocumentRepository(db)
+    doc = doc_repo.get_by_id(document_id)
+    
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    if not doc.raw_text:
+        raise HTTPException(status_code=400, detail="Document has no extracted text")
+    
+    # Initialize processor
+    processor = get_processor(db)
+    
+    # Build metadata
+    metadata = {
+        "source": doc.original_filename or doc.filename,
+        "filename": doc.original_filename or doc.filename,
+    }
+    
+    # Process (without saving)
+    chunks = processor.process_document(
+        filename=doc.original_filename or doc.filename,
+        content=doc.raw_text,
+        metadata=metadata,
+        source_document_id=doc.id
     )
-
-    if updated_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="No chunks updated (check filename or IDs)"
-        )
-
+    
+    # Get statistics
+    stats = processor.chunker.get_statistics(chunks)
+    
     return StandardResponse(
         status_code=200,
-        message=f"{updated_count} chunks updated for filename {filename}",
+        message=f"Preview: {len(chunks)} chunks would be created",
         data={
-            "filename": filename,
-            "updated_count": updated_count
+            "document_id": document_id,
+            "filename": doc.original_filename,
+            "content_length": len(doc.raw_text),
+            "chunks_preview": [
+                {
+                    "index": i,
+                    "length": len(c.page_content),
+                    "preview": c.page_content[:100] + "..." if len(c.page_content) > 100 else c.page_content,
+                    "metadata": {
+                        "chunk_id": c.metadata.get("chunk_id"),
+                        "is_first": c.metadata.get("is_first_chunk"),
+                        "is_last": c.metadata.get("is_last_chunk")
+                    }
+                }
+                for i, c in enumerate(chunks[:5])  # Show first 5 only
+            ],
+            "statistics": stats,
+            "note": "This is a preview. Use POST /process/{id} to save chunks."
         }
     )

@@ -1409,3 +1409,4 @@ def init_database(database_url: str = None) -> DatabaseManager:
     global _db_manager
     _db_manager = DatabaseManager(database_url=database_url)
     return _db_manager
+

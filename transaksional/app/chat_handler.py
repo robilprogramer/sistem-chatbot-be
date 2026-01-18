@@ -56,6 +56,55 @@ class ChatHandler:
         self.session_manager: SessionManager = get_session_manager()
         self.llm: BaseLLMClient = get_llm()
     
+    async def _handle_ask_examples(self, session: SessionState, user_message: str) -> ChatResult:
+        current_step = session.current_step
+        fields = self.form_manager.get_fields_for_step(current_step)
+
+        message_lower = user_message.lower()
+        # cari field yang disebut user (cocokkan label atau id)
+        matched_field = None
+        for f in fields:
+            if f.examples:
+                label_lower = (f.label or "").lower()
+                if label_lower and label_lower in message_lower:
+                    matched_field = f
+                    break
+                if f.id and f.id.lower() in message_lower:
+                    matched_field = f
+                    break
+
+        # jika tidak ada match tapi hanya satu field memiliki contoh -> gunakan itu
+        fields_with_examples = [f for f in fields if f.examples]
+        if not matched_field:
+            if len(fields_with_examples) == 1:
+                matched_field = fields_with_examples[0]
+            elif len(fields_with_examples) > 1:
+                # tampilkan ringkasan bahwa ada beberapa field dengan contoh
+                lines = ["Ada beberapa field yang memiliki contoh:"]
+                for f in fields_with_examples[:6]:
+                    lines.append(f"• {f.label} (ketik 'contoh {f.label}' untuk melihat contohnya)")
+                return self._build_result(session, "\n".join(lines))
+
+        if not matched_field:
+            return self._build_result(session, "Maaf, saya tidak menemukan contoh untuk field ini di tahap saat ini.")
+
+        # panggil LLM untuk menjelaskan contoh
+        field_dict = {
+            "id": matched_field.id,
+            "label": matched_field.label,
+            "type": matched_field.type
+        }
+        recent = session.get_recent_messages(8)
+        context = "\n".join([f"{m['role']}: {m['content']}" for m in recent])
+        try:
+            explanation = await self.llm.explain_examples(field_dict, matched_field.examples, user_message, context)
+        except Exception as e:
+            print(f"LLM explain_examples error: {e}")
+            explanation = "Maaf, terjadi kesalahan saat mengambil contoh. Berikut beberapa contoh yang tersedia:\n" + \
+                          "\n".join(matched_field.examples[:5])
+
+        return self._build_result(session, explanation)
+
     async def process_message(self, session_id: str, user_message: str, 
                               file_path: str = None, file_info: Dict = None, 
                               user_id: str = None) -> ChatResult:
@@ -101,7 +150,6 @@ class ChatHandler:
                     result = await self._handle_data_input(session, user_message)
         
         self.session_manager.save_session(session)
-        print(f"Chat response: {result.response}")
         session.add_message("assistant", result.response)
         return result
     
@@ -310,24 +358,40 @@ class ChatHandler:
             print(f"DB save error: {e}")
         
         payment_info = self._build_payment_info(registration_number, tingkatan)
-        
         response = f"""🎉 **PENDAFTARAN BERHASIL!**
 
-**Nomor Registrasi:** `{registration_number}`
+        **Nomor Registrasi:** `{registration_number}`
 
-{payment_info}
+        💡 Simpan nomor registrasi untuk cek status.
 
-💡 Simpan nomor registrasi untuk cek status.
+        Ketik **daftar baru** untuk pendaftaran lain.
+        """
 
-Ketik **'daftar baru'** untuk pendaftaran lain."""
-        
         session.raw_data["_phase"] = ConversationPhase.ASK_NEW_REGISTRATION.value
-        
+
         result = self._build_result(session, response)
         result.registration_number = registration_number
         result.registration_status = "pending_payment"
         result.is_complete = True
         return result
+
+#         response = f"""🎉 **PENDAFTARAN BERHASIL!**
+
+# **Nomor Registrasi:** `{registration_number}`
+
+# {payment_info}
+
+# 💡 Simpan nomor registrasi untuk cek status.
+
+# Ketik **'daftar baru'** untuk pendaftaran lain."""
+        
+#         session.raw_data["_phase"] = ConversationPhase.ASK_NEW_REGISTRATION.value
+        
+#         result = self._build_result(session, response)
+#         result.registration_number = registration_number
+#         result.registration_status = "pending_payment"
+#         result.is_complete = True
+#         return result
 
     def _build_payment_info(self, registration_number: str, tingkatan: str) -> str:
         payment_config = self.form_manager.config.get("payment_info", {})
@@ -374,6 +438,8 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
         return self._build_result(session, "Baik, data Anda tetap tersimpan.")
 
     async def _handle_post_confirmation(self, session: SessionState, user_message: str) -> ChatResult:
+        print("Handling post-confirmation message.")
+        print(user_message)
         if any(k in user_message.lower() for k in ["daftar baru", "daftar lagi"]):
             first_step = self.form_manager.get_first_step()
             session.current_step = first_step.id if first_step else ""
@@ -667,8 +733,66 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
     # =========================================================================
     # DATA INPUT HANDLERS
     # =========================================================================
-    
     async def _handle_data_input(self, session: SessionState, user_message: str) -> ChatResult:
+        current_step = session.current_step
+        fields = self.form_manager.get_fields_for_step(current_step)
+
+        # ======================================================
+        # >>> DI SINI: deteksi user minta contoh <<<
+        # ======================================================
+        ask_examples_keywords = [
+            "contoh",
+            "contohnya",
+            "sebutkan contoh",
+            "sebutkan contohnya",
+            "apa contohnya",
+            "ada contoh"
+        ]
+
+        if any(k in user_message.lower() for k in ask_examples_keywords):
+            return await self._handle_ask_examples(session, user_message)
+
+        # ======================================================
+        # Baru lakukan extraction jika user memang input data
+        # ======================================================
+        extraction_result = await self._extract_fields_with_llm(
+            user_message, fields, session
+        )
+
+        if not extraction_result:
+            print("LLM extraction returned nothing, using simple extraction.")
+            extraction_result = self.form_manager.extract_fields_simple(
+                user_message, fields
+            )
+
+        confirmed_values = []
+        validation_errors = {}
+
+        for field_id, value in extraction_result.items():
+            field = self.form_manager.get_field(field_id)
+            if not field:
+                continue
+
+            is_valid, error_msg, cleaned_value = self.form_manager.validate_field(
+                field_id, value
+            )
+
+            if is_valid:
+                action = session.set_field(field_id, cleaned_value, field.label)
+                session.clear_validation_error(field_id)
+                confirmed_values.append((field, cleaned_value, action))
+            else:
+                session.set_validation_error(field_id, error_msg)
+                validation_errors[field_id] = error_msg
+
+        
+        response = self._build_input_response(
+            session, confirmed_values, validation_errors, current_step
+        )
+
+        return self._build_result(session, response)
+
+    async def _handle_data_inputOld(self, session: SessionState, user_message: str) -> ChatResult:
         current_step = session.current_step
         fields = self.form_manager.get_fields_for_step(current_step)
         
@@ -695,6 +819,8 @@ Ketik **'daftar baru'** untuk pendaftaran lain."""
             else:
                 session.set_validation_error(field_id, error_msg)
                 validation_errors[field_id] = error_msg
+        print(f"Confirmed values: {confirmed_values}")
+        print(f"Validation errors: {validation_errors}")
         
         response = self._build_input_response(session, confirmed_values, validation_errors, current_step)
         

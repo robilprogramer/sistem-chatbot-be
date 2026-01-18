@@ -4,15 +4,15 @@ from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from enum import Enum
+import json
 
 from transaksional.app.config import settings
-from transaksional.app.database import get_db_manager,DatabaseManager
+from transaksional.app.database import get_db_manager, DatabaseManager
 
 router = APIRouter(
     prefix=f"{settings.transactional_prefix}/admin",
     tags=["Admin"]
 )
-
 
 
 # =============================================================================
@@ -60,7 +60,7 @@ class RegistrationFilter(BaseModel):
     user_id: Optional[str] = None
     date_from: Optional[date] = None
     date_to: Optional[date] = None
-    search: Optional[str] = None  # Search by name, reg number, etc.
+    search: Optional[str] = None
     tingkatan: Optional[str] = None
     sekolah: Optional[str] = None
 
@@ -69,7 +69,7 @@ class PaginationParams(BaseModel):
     page: int = Field(default=1, ge=1)
     per_page: int = Field(default=20, ge=1, le=100)
     sort_by: str = "created_at"
-    sort_order: str = "desc"  # asc or desc
+    sort_order: str = "desc"
 
 
 # =============================================================================
@@ -81,6 +81,37 @@ def get_db() -> DatabaseManager:
 
 
 # =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def _safe_json_loads(data) -> Optional[Dict]:
+    """Safely parse JSON string or return dict as-is"""
+    if data is None:
+        return None
+    if isinstance(data, dict):
+        return data
+    try:
+        return json.loads(data)
+    except:
+        return None
+
+
+def _extract_student_info(student_data: Dict) -> Dict:
+    """Extract commonly used student info"""
+    if not student_data:
+        return {}
+    return {
+        "nama_lengkap": student_data.get("nama_lengkap"),
+        "tingkatan": student_data.get("tingkatan"),
+        "nama_sekolah": student_data.get("nama_sekolah"),
+        "program": student_data.get("program"),
+        "jenis_kelamin": student_data.get("jenis_kelamin"),
+        "tempat_lahir": student_data.get("tempat_lahir"),
+        "tanggal_lahir": student_data.get("tanggal_lahir"),
+    }
+
+
+# =============================================================================
 # DASHBOARD & STATISTICS
 # =============================================================================
 
@@ -89,11 +120,27 @@ async def get_admin_dashboard(db: DatabaseManager = Depends(get_db)):
     """
     Get admin dashboard with overview statistics
     """
-    stats = db.get_registration_stats()
-    
-    # Get additional metrics
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get basic stats
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN DATE(created_at) = CURRENT_DATE THEN 1 ELSE 0 END) as today,
+                SUM(CASE WHEN created_at >= CURRENT_DATE - INTERVAL '7 days' THEN 1 ELSE 0 END) as this_week
+            FROM registrations
+        """)
+        stats_row = cursor.fetchone()
+        
+        # Status distribution
+        cursor.execute("""
+            SELECT status, COUNT(*) as count 
+            FROM registrations 
+            GROUP BY status
+        """)
+        by_status = {row["status"]: row["count"] for row in cursor.fetchall()}
         
         # Pending actions count
         cursor.execute("""
@@ -105,13 +152,13 @@ async def get_admin_dashboard(db: DatabaseManager = Depends(get_db)):
         # Recent registrations (last 24 hours)
         cursor.execute("""
             SELECT COUNT(*) as count FROM registrations 
-            WHERE created_at >= datetime('now', '-1 day')
+            WHERE created_at >= NOW() - INTERVAL '1 day'
         """)
         last_24h = cursor.fetchone()["count"]
         
         # Documents pending verification
         cursor.execute("""
-            SELECT COUNT(*) as count FROM documents 
+            SELECT COUNT(*) as count FROM registration_documents 
             WHERE status = 'uploaded'
         """)
         docs_pending = cursor.fetchone()["count"]
@@ -119,18 +166,18 @@ async def get_admin_dashboard(db: DatabaseManager = Depends(get_db)):
         # Registration by tingkatan
         cursor.execute("""
             SELECT 
-                json_extract(student_data, '$.tingkatan') as tingkatan,
+                student_data->>'tingkatan' as tingkatan,
                 COUNT(*) as count
             FROM registrations 
             WHERE status != 'draft' AND student_data IS NOT NULL
-            GROUP BY tingkatan
+            GROUP BY student_data->>'tingkatan'
         """)
         by_tingkatan = {row["tingkatan"]: row["count"] for row in cursor.fetchall() if row["tingkatan"]}
         
         # Recent activity (last 10 status changes)
         cursor.execute("""
             SELECT sh.*, r.session_id,
-                   json_extract(r.student_data, '$.nama_lengkap') as student_name
+                   r.student_data->>'nama_lengkap' as student_name
             FROM status_history sh
             LEFT JOIN registrations r ON sh.registration_number = r.registration_number
             ORDER BY sh.changed_at DESC
@@ -142,14 +189,14 @@ async def get_admin_dashboard(db: DatabaseManager = Depends(get_db)):
         "success": True,
         "data": {
             "overview": {
-                "total_registrations": stats["total"],
-                "today": stats["today"],
-                "this_week": stats["this_week"],
+                "total_registrations": stats_row["total"] or 0,
+                "today": stats_row["today"] or 0,
+                "this_week": stats_row["this_week"] or 0,
                 "last_24_hours": last_24h,
                 "pending_actions": pending_actions,
                 "documents_pending_verification": docs_pending
             },
-            "by_status": stats["by_status"],
+            "by_status": by_status,
             "by_tingkatan": by_tingkatan,
             "recent_activity": recent_activity
         }
@@ -166,27 +213,31 @@ async def get_detailed_statistics(
     Get detailed registration statistics with date filters
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Build date filter
         date_filter = ""
         params = []
+        param_idx = 1
+        
         if date_from:
-            date_filter += " AND DATE(created_at) >= ?"
-            params.append(date_from.isoformat())
+            date_filter += f" AND DATE(created_at) >= %s"
+            params.append(date_from)
         if date_to:
-            date_filter += " AND DATE(created_at) <= ?"
-            params.append(date_to.isoformat())
+            date_filter += f" AND DATE(created_at) <= %s"
+            params.append(date_to)
         
         # Daily registration trend (last 30 days)
         cursor.execute("""
             SELECT DATE(created_at) as date, COUNT(*) as count
             FROM registrations
-            WHERE created_at >= DATE('now', '-30 days')
+            WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
             GROUP BY DATE(created_at)
             ORDER BY date
         """)
-        daily_trend = [{"date": row["date"], "count": row["count"]} for row in cursor.fetchall()]
+        daily_trend = [{"date": row["date"].isoformat() if row["date"] else None, "count": row["count"]} 
+                       for row in cursor.fetchall()]
         
         # Status distribution
         cursor.execute(f"""
@@ -194,32 +245,32 @@ async def get_detailed_statistics(
             FROM registrations
             WHERE 1=1 {date_filter}
             GROUP BY status
-        """, params)
+        """, params if params else None)
         status_distribution = {row["status"]: row["count"] for row in cursor.fetchall()}
         
         # By sekolah (school)
         cursor.execute(f"""
             SELECT 
-                json_extract(student_data, '$.nama_sekolah') as sekolah,
+                student_data->>'nama_sekolah' as sekolah,
                 COUNT(*) as count
             FROM registrations
             WHERE student_data IS NOT NULL {date_filter}
-            GROUP BY sekolah
+            GROUP BY student_data->>'nama_sekolah'
             ORDER BY count DESC
             LIMIT 10
-        """, params)
+        """, params if params else None)
         by_sekolah = [{"sekolah": row["sekolah"], "count": row["count"]} 
                       for row in cursor.fetchall() if row["sekolah"]]
         
         # By program
         cursor.execute(f"""
             SELECT 
-                json_extract(student_data, '$.program') as program,
+                student_data->>'program' as program,
                 COUNT(*) as count
             FROM registrations
             WHERE student_data IS NOT NULL {date_filter}
-            GROUP BY program
-        """, params)
+            GROUP BY student_data->>'program'
+        """, params if params else None)
         by_program = {row["program"]: row["count"] for row in cursor.fetchall() if row["program"]}
         
         # Conversion funnel
@@ -233,25 +284,27 @@ async def get_detailed_statistics(
         """)
         funnel_row = cursor.fetchone()
         conversion_funnel = {
-            "started": funnel_row["total"],
-            "confirmed": funnel_row["confirmed"],
-            "paid": funnel_row["paid"],
-            "approved": funnel_row["approved"]
+            "started": funnel_row["total"] or 0,
+            "confirmed": funnel_row["confirmed"] or 0,
+            "paid": funnel_row["paid"] or 0,
+            "approved": funnel_row["approved"] or 0
         }
         
         # Average completion time (draft to approved)
         cursor.execute("""
             SELECT AVG(
-                julianday(
+                EXTRACT(EPOCH FROM (
                     (SELECT changed_at FROM status_history 
                      WHERE registration_number = r.registration_number 
                      AND new_status = 'approved' LIMIT 1)
-                ) - julianday(r.created_at)
+                    - r.created_at
+                )) / 86400
             ) as avg_days
             FROM registrations r
             WHERE status = 'approved'
         """)
-        avg_completion = cursor.fetchone()["avg_days"]
+        avg_row = cursor.fetchone()
+        avg_completion = avg_row["avg_days"] if avg_row else None
     
     return {
         "success": True,
@@ -288,40 +341,41 @@ async def list_registrations(
     List all registrations with filtering and pagination
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Build query
         where_clauses = ["1=1"]
         params = []
         
         if status:
-            where_clauses.append("status = ?")
+            where_clauses.append("status = %s")
             params.append(status.value)
         
         if user_id:
-            where_clauses.append("user_id = ?")
+            where_clauses.append("user_id = %s")
             params.append(user_id)
         
         if search:
             where_clauses.append("""
-                (registration_number LIKE ? 
-                OR json_extract(student_data, '$.nama_lengkap') LIKE ?
-                OR session_id LIKE ?)
+                (registration_number ILIKE %s 
+                OR student_data->>'nama_lengkap' ILIKE %s
+                OR session_id ILIKE %s)
             """)
             search_pattern = f"%{search}%"
             params.extend([search_pattern, search_pattern, search_pattern])
         
         if tingkatan:
-            where_clauses.append("json_extract(student_data, '$.tingkatan') = ?")
-            params.append(tingkatan)
+            where_clauses.append("student_data->>'tingkatan' ILIKE %s")
+            params.append(f"%{tingkatan}%")
         
         if date_from:
-            where_clauses.append("DATE(created_at) >= ?")
-            params.append(date_from.isoformat())
+            where_clauses.append("DATE(created_at) >= %s")
+            params.append(date_from)
         
         if date_to:
-            where_clauses.append("DATE(created_at) <= ?")
-            params.append(date_to.isoformat())
+            where_clauses.append("DATE(created_at) <= %s")
+            params.append(date_to)
         
         where_sql = " AND ".join(where_clauses)
         
@@ -329,26 +383,31 @@ async def list_registrations(
         allowed_sort = ["created_at", "updated_at", "registration_number", "status", "completion_percentage"]
         if sort_by not in allowed_sort:
             sort_by = "created_at"
-        sort_order = "DESC" if sort_order.lower() == "desc" else "ASC"
+        sort_direction = "DESC" if sort_order.lower() == "desc" else "ASC"
         
         # Get total count
-        cursor.execute(f"SELECT COUNT(*) as total FROM registrations WHERE {where_sql}", params)
+        cursor.execute(f"SELECT COUNT(*) as total FROM registrations WHERE {where_sql}", params if params else None)
         total = cursor.fetchone()["total"]
         
         # Get paginated results
         offset = (page - 1) * per_page
         cursor.execute(f"""
-            SELECT * FROM registrations 
+            SELECT 
+                id, session_id, user_id, registration_number, status,
+                current_step, completion_percentage, student_data,
+                created_at, updated_at, confirmed_at
+            FROM registrations 
             WHERE {where_sql}
-            ORDER BY {sort_by} {sort_order}
-            LIMIT ? OFFSET ?
-        """, params + [per_page, offset])
+            ORDER BY {sort_by} {sort_direction}
+            LIMIT %s OFFSET %s
+        """, (params if params else []) + [per_page, offset])
         
         rows = cursor.fetchall()
         
         registrations = []
         for row in rows:
-            reg = {
+            student_data = _safe_json_loads(row["student_data"])
+            registrations.append({
                 "id": row["id"],
                 "session_id": row["session_id"],
                 "user_id": row["user_id"],
@@ -356,12 +415,11 @@ async def list_registrations(
                 "status": row["status"],
                 "current_step": row["current_step"],
                 "completion_percentage": row["completion_percentage"],
-                "student_data": _safe_json_loads(row["student_data"]),
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "confirmed_at": row["confirmed_at"]
-            }
-            registrations.append(reg)
+                "student_info": _extract_student_info(student_data),
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+                "confirmed_at": row["confirmed_at"].isoformat() if row["confirmed_at"] else None,
+            })
     
     return {
         "success": True,
@@ -371,7 +429,7 @@ async def list_registrations(
                 "page": page,
                 "per_page": per_page,
                 "total": total,
-                "total_pages": (total + per_page - 1) // per_page
+                "total_pages": (total + per_page - 1) // per_page if total > 0 else 0
             }
         }
     }
@@ -424,7 +482,7 @@ async def update_registration_status(
         "payment_verified": ["documents_review", "cancelled"],
         "documents_review": ["approved", "rejected", "payment_verified"],
         "approved": [],
-        "rejected": ["documents_review"],  # Allow re-review
+        "rejected": ["documents_review"],
         "cancelled": []
     }
     
@@ -508,7 +566,7 @@ async def delete_registration(
     db: DatabaseManager = Depends(get_db)
 ):
     """
-    Delete a registration (soft delete - change status to cancelled)
+    Delete a registration (only draft or cancelled)
     """
     registration = db.get_registration(registration_number)
     if not registration:
@@ -522,13 +580,15 @@ async def delete_registration(
         )
     
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
         cursor.execute(
-            "DELETE FROM registrations WHERE registration_number = ?",
+            "DELETE FROM registration_documents WHERE registration_number = %s",
             (registration_number,)
         )
         cursor.execute(
-            "DELETE FROM documents WHERE registration_number = ?",
+            "DELETE FROM registrations WHERE registration_number = %s",
             (registration_number,)
         )
     
@@ -554,23 +614,28 @@ async def list_documents(
     List all documents with filtering
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         where_clauses = ["1=1"]
         params = []
         
         if status:
-            where_clauses.append("d.status = ?")
+            where_clauses.append("d.status = %s")
             params.append(status.value)
         
         if registration_number:
-            where_clauses.append("d.registration_number = ?")
+            where_clauses.append("d.registration_number = %s")
             params.append(registration_number)
         
         where_sql = " AND ".join(where_clauses)
         
         # Get total
-        cursor.execute(f"SELECT COUNT(*) as total FROM documents d WHERE {where_sql}", params)
+        cursor.execute(f"""
+            SELECT COUNT(*) as total 
+            FROM registration_documents d 
+            WHERE {where_sql}
+        """, params if params else None)
         total = cursor.fetchone()["total"]
         
         # Get documents with registration info
@@ -578,13 +643,13 @@ async def list_documents(
         cursor.execute(f"""
             SELECT d.*, 
                    r.status as registration_status,
-                   json_extract(r.student_data, '$.nama_lengkap') as student_name
-            FROM documents d
+                   r.student_data->>'nama_lengkap' as student_name
+            FROM registration_documents d
             LEFT JOIN registrations r ON d.registration_number = r.registration_number
             WHERE {where_sql}
             ORDER BY d.uploaded_at DESC
-            LIMIT ? OFFSET ?
-        """, params + [per_page, offset])
+            LIMIT %s OFFSET %s
+        """, (params if params else []) + [per_page, offset])
         
         documents = [dict(row) for row in cursor.fetchall()]
     
@@ -596,7 +661,7 @@ async def list_documents(
                 "page": page,
                 "per_page": per_page,
                 "total": total,
-                "total_pages": (total + per_page - 1) // per_page
+                "total_pages": (total + per_page - 1) // per_page if total > 0 else 0
             }
         }
     }
@@ -608,13 +673,15 @@ async def get_pending_documents(db: DatabaseManager = Depends(get_db)):
     Get all documents pending verification
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        
         cursor.execute("""
             SELECT d.*, 
                    r.status as registration_status,
-                   json_extract(r.student_data, '$.nama_lengkap') as student_name,
-                   json_extract(r.student_data, '$.tingkatan') as tingkatan
-            FROM documents d
+                   r.student_data->>'nama_lengkap' as student_name,
+                   r.student_data->>'tingkatan' as tingkatan
+            FROM registration_documents d
             LEFT JOIN registrations r ON d.registration_number = r.registration_number
             WHERE d.status = 'uploaded'
             ORDER BY d.uploaded_at ASC
@@ -697,7 +764,8 @@ async def list_users_with_registrations(
     List all users who have registrations
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         # Get total unique users
         cursor.execute("""
@@ -721,7 +789,7 @@ async def list_users_with_registrations(
             WHERE user_id IS NOT NULL
             GROUP BY user_id
             ORDER BY last_registration DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
         """, (per_page, offset))
         
         users = [dict(row) for row in cursor.fetchall()]
@@ -734,7 +802,7 @@ async def list_users_with_registrations(
                 "page": page,
                 "per_page": per_page,
                 "total": total,
-                "total_pages": (total + per_page - 1) // per_page
+                "total_pages": (total + per_page - 1) // per_page if total > 0 else 0
             }
         }
     }
@@ -769,7 +837,6 @@ async def export_registrations(
     status: Optional[RegistrationStatus] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
-    # format: str = Query("json", regex="^(json|csv)$"),
     format: str = Query("json", pattern="^(json|csv)$"),
     db: DatabaseManager = Depends(get_db)
 ):
@@ -777,22 +844,23 @@ async def export_registrations(
     Export registrations data
     """
     with db.get_connection() as conn:
-        cursor = conn.cursor()
+        from psycopg2.extras import RealDictCursor
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         where_clauses = ["status != 'draft'"]
         params = []
         
         if status:
-            where_clauses.append("status = ?")
+            where_clauses.append("status = %s")
             params.append(status.value)
         
         if date_from:
-            where_clauses.append("DATE(created_at) >= ?")
-            params.append(date_from.isoformat())
+            where_clauses.append("DATE(created_at) >= %s")
+            params.append(date_from)
         
         if date_to:
-            where_clauses.append("DATE(created_at) <= ?")
-            params.append(date_to.isoformat())
+            where_clauses.append("DATE(created_at) <= %s")
+            params.append(date_to)
         
         where_sql = " AND ".join(where_clauses)
         
@@ -801,20 +869,20 @@ async def export_registrations(
                 registration_number,
                 user_id,
                 status,
-                json_extract(student_data, '$.nama_lengkap') as nama_lengkap,
-                json_extract(student_data, '$.nama_sekolah') as nama_sekolah,
-                json_extract(student_data, '$.tingkatan') as tingkatan,
-                json_extract(student_data, '$.program') as program,
-                json_extract(student_data, '$.jenis_kelamin') as jenis_kelamin,
-                json_extract(student_data, '$.tempat_lahir') as tempat_lahir,
-                json_extract(student_data, '$.tanggal_lahir') as tanggal_lahir,
+                student_data->>'nama_lengkap' as nama_lengkap,
+                student_data->>'nama_sekolah' as nama_sekolah,
+                student_data->>'tingkatan' as tingkatan,
+                student_data->>'program' as program,
+                student_data->>'jenis_kelamin' as jenis_kelamin,
+                student_data->>'tempat_lahir' as tempat_lahir,
+                student_data->>'tanggal_lahir' as tanggal_lahir,
                 created_at,
                 confirmed_at,
                 updated_at
             FROM registrations
             WHERE {where_sql}
             ORDER BY created_at DESC
-        """, params)
+        """, params if params else None)
         
         rows = cursor.fetchall()
         data = [dict(row) for row in rows]
@@ -827,12 +895,23 @@ async def export_registrations(
         if data:
             writer = csv.DictWriter(output, fieldnames=data[0].keys())
             writer.writeheader()
-            writer.writerows(data)
+            for row in data:
+                # Convert datetime to string
+                for k, v in row.items():
+                    if isinstance(v, datetime):
+                        row[k] = v.isoformat()
+                writer.writerow(row)
         
         return JSONResponse(
             content={"success": True, "data": output.getvalue()},
             headers={"Content-Disposition": "attachment; filename=registrations.csv"}
         )
+    
+    # Convert datetime for JSON
+    for row in data:
+        for k, v in row.items():
+            if isinstance(v, datetime):
+                row[k] = v.isoformat()
     
     return {
         "success": True,
@@ -868,7 +947,8 @@ async def system_health(db: DatabaseManager = Depends(get_db)):
     """
     try:
         with db.get_connection() as conn:
-            cursor = conn.cursor()
+            from psycopg2.extras import RealDictCursor
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute("SELECT COUNT(*) as count FROM registrations")
             count = cursor.fetchone()["count"]
         
@@ -886,18 +966,3 @@ async def system_health(db: DatabaseManager = Depends(get_db)):
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
-
-
-# =============================================================================
-# HELPER FUNCTIONS
-# =============================================================================
-
-def _safe_json_loads(data: str) -> Optional[Dict]:
-    """Safely parse JSON string"""
-    if not data:
-        return None
-    try:
-        import json
-        return json.loads(data)
-    except:
-        return None

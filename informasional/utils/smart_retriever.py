@@ -1,68 +1,122 @@
 # ============================================================================
 # FILE: informasional/utils/smart_retriever.py
+# REFACTORED - Terintegrasi dengan singleton EmbeddingManager & VectorStoreManager
 # ============================================================================
 """
 Smart Retriever dengan Document Aggregation
 
 FLOW:
-1. User query → embed query
-2. Search ChromaDB → get top-K chunks
+1. User query → embed query (via singleton EmbeddingManager)
+2. Search ChromaDB → get top-K chunks (via singleton VectorStoreManager)
 3. Extract unique document_ids
 4. Fetch ALL chunks untuk setiap document_id
 5. Sort by chunk_index
 6. Merge chunks → dokumen lengkap
 7. Return context ke LLM
 
-Ini menyelesaikan masalah "informasi terpotong"!
+INTEGRASI:
+- Menggunakan EmbeddingManager singleton (sama dengan embedding router)
+- Menggunakan VectorStoreManager singleton (sama dengan embedding router)
+- Config dari config.yaml via ConfigLoader
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from collections import defaultdict
 import numpy as np
 from langchain_core.documents import Document
-from langchain_chroma import Chroma
+
+from informasional.utils.embedding_utils import get_embedding_manager
+from informasional.utils.vectorstore_utils import get_vectorstore
+from informasional.core.config_loader import get_config
 
 
 class SmartRetriever:
     """
     Smart Retriever dengan Document Aggregation
     
-    KUNCI: Menggabungkan semua chunks dari dokumen yang sama
-    sehingga context yang diberikan ke LLM menjadi lengkap.
+    KUNCI: Menggunakan SINGLETON managers untuk konsistensi dengan embedding.
+    
+    Features:
+    - Document aggregation: fetch semua chunks dari dokumen yang sama
+    - Similarity filtering: filter berdasarkan threshold
+    - Metadata filtering: filter by jenjang, cabang, tahun
     """
     
     def __init__(
         self,
-        vectorstore: Chroma,
-        embedding_function,
-        top_k: int = 5,
-        similarity_threshold: float = 0.5,
-        max_documents: int = 3,
-        fetch_full_document: bool = True,
+        config_path: str = None,
+        top_k: int = None,
+        similarity_threshold: float = None,
+        max_documents: int = None,
+        fetch_full_document: bool = None
     ):
         """
+        Initialize SmartRetriever
+        
         Args:
-            vectorstore: ChromaDB vectorstore
-            embedding_function: Embedding model
-            top_k: Jumlah chunks awal yang di-retrieve
-            similarity_threshold: Minimum similarity score (0-1)
-            max_documents: Max dokumen unik yang diambil
-            fetch_full_document: Jika True, fetch semua chunks per dokumen
+            config_path: Path ke config.yaml (optional, uses singleton)
+            top_k: Override top_k from config
+            similarity_threshold: Override threshold from config
+            max_documents: Override max_documents from config
+            fetch_full_document: Override fetch_full_document from config
         """
-        self.vectorstore = vectorstore
-        self.embedding_function = embedding_function
-        self.top_k = top_k
-        self.similarity_threshold = similarity_threshold
-        self.max_documents = max_documents
-        self.fetch_full_document = fetch_full_document
-        self.collection = vectorstore._collection
+        # Load config
+        self._config = get_config(config_path)
+        retrieval_cfg = self._config.get_retrieval()
+        
+        # Get singleton managers (SAMA dengan embedding router)
+        self._embedding_manager = get_embedding_manager(config_path)
+        self._vectorstore_manager = get_vectorstore(config_path)
+        
+        # Retrieval settings (from config or override)
+        self.top_k = top_k or retrieval_cfg.get("top_k", 10)
+        self.similarity_threshold = similarity_threshold or retrieval_cfg.get("similarity_threshold", 0.4)
+        self.max_documents = max_documents or retrieval_cfg.get("max_documents", 3)
+        self.fetch_full_document = fetch_full_document if fetch_full_document is not None else retrieval_cfg.get("fetch_full_document", True)
+        
+        # Log config
+        self._log_config()
     
-    def retrieve(self, query: str, verbose: bool = False) -> List[Document]:
+    def _log_config(self):
+        """Log current configuration"""
+        print(f"🔍 SmartRetriever initialized")
+        print(f"   └─ top_k: {self.top_k}")
+        print(f"   └─ similarity_threshold: {self.similarity_threshold}")
+        print(f"   └─ max_documents: {self.max_documents}")
+        print(f"   └─ fetch_full_document: {self.fetch_full_document}")
+        print(f"   └─ Using singleton EmbeddingManager: {self._embedding_manager.model_name}")
+    
+    @property
+    def collection(self):
+        """Get ChromaDB collection"""
+        return self._vectorstore_manager.collection
+    
+    @property
+    def embedding_manager(self):
+        """Get EmbeddingManager (same as embedding router)"""
+        return self._embedding_manager
+    
+    @property
+    def vectorstore_manager(self):
+        """Get VectorStoreManager (same as embedding router)"""
+        return self._vectorstore_manager
+    
+    # =========================================================================
+    # MAIN RETRIEVE METHOD
+    # =========================================================================
+    
+    def retrieve(
+        self,
+        query: str,
+        filter: Dict[str, Any] = None,
+        verbose: bool = False
+    ) -> List[Document]:
         """
         Retrieve dan aggregate documents
         
         Args:
             query: User query
+            filter: Optional metadata filter (e.g., {"jenjang": "TK"})
             verbose: Print debug info
         
         Returns:
@@ -73,39 +127,66 @@ class SmartRetriever:
             print("🔍 SMART RETRIEVAL PIPELINE")
             print(f"{'='*60}")
             print(f"📝 Query: '{query}'")
+            if filter:
+                print(f"🔎 Filter: {filter}")
         
-        # 1️⃣ Embed query
-        query_embedding = self.embedding_function.embed_query(query)
+        # 1️⃣ Embed query (menggunakan SAMA embedding dengan saat embed)
+        query_embedding = self._embedding_manager.embed_query(query)
         
-        # 2️⃣ Search top-K
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=self.top_k,
-            include=["documents", "metadatas", "distances"]
-        )
+        if verbose:
+            print(f"✅ Query embedded ({len(query_embedding)} dims)")
+        
+        # 2️⃣ Search top-K dari ChromaDB
+        results = self._search_collection(query_embedding, filter)
         
         if not results['ids'][0]:
             if verbose:
                 print("❌ No results found")
             return []
         
-        # 3️⃣ Process results
+        # 3️⃣ Process results dan filter by similarity
         relevant_docs = self._process_results(results, verbose)
         
         if not relevant_docs:
+            if verbose:
+                print("❌ No documents passed similarity threshold")
             return []
         
-        # 4️⃣ Aggregate by document_id
+        # 4️⃣ Aggregate by document_id (fetch full documents)
         if self.fetch_full_document:
             aggregated = self._aggregate_by_document(relevant_docs, verbose)
             return aggregated
         else:
             return relevant_docs
     
-    def _process_results(self, results: Dict, verbose: bool) -> List[Document]:
-        """Process initial query results"""
+    def _search_collection(
+        self,
+        query_embedding: List[float],
+        filter: Dict[str, Any] = None
+    ) -> Dict:
+        """Search ChromaDB collection"""
+        kwargs = {
+            "query_embeddings": [query_embedding],
+            "n_results": self.top_k,
+            "include": ["documents", "metadatas", "distances"]
+        }
+        
+        if filter:
+            kwargs["where"] = filter
+        
+        return self.collection.query(**kwargs)
+    
+    def _process_results(
+        self,
+        results: Dict,
+        verbose: bool
+    ) -> List[Document]:
+        """Process initial query results dan filter by similarity"""
         docs = []
         seen = set()
+        
+        if verbose:
+            print(f"\n📊 Processing {len(results['ids'][0])} initial results...")
         
         for i, (doc_id, distance, content, metadata) in enumerate(zip(
             results['ids'][0],
@@ -113,19 +194,23 @@ class SmartRetriever:
             results['documents'][0],
             results['metadatas'][0]
         )):
-            # Convert distance to similarity (cosine)
+            # Convert distance to similarity (cosine distance to similarity)
+            # ChromaDB cosine distance is in [0, 2], similarity = 1 - (distance / 2)
             similarity = 1 - (distance / 2)
             
+            # Filter by threshold
             if similarity < self.similarity_threshold:
                 if verbose:
-                    print(f"   ⏭️ Skipping (score {similarity:.3f} < threshold)")
+                    print(f"   ⏭️ [{i+1}] Skipping (score {similarity:.3f} < {self.similarity_threshold})")
                 continue
             
+            # Deduplicate by chunk_id
             chunk_id = metadata.get('chunk_id', doc_id)
             if chunk_id in seen:
                 continue
             seen.add(chunk_id)
             
+            # Add retrieval metadata
             metadata['similarity_score'] = similarity
             metadata['retrieval_rank'] = i + 1
             
@@ -135,13 +220,10 @@ class SmartRetriever:
             ))
             
             if verbose:
-                print(f"\n   {i+1}. [Score: {similarity:.3f}]")
-                print(f"      Document ID: {metadata.get('document_id', 'N/A')}")
-                print(f"      Chunk: {metadata.get('chunk_index', '?')}/{metadata.get('total_chunks', '?')}")
-                print(f"      Preview: {content[:80]}...")
+                print(f"   ✅ [{i+1}] Score: {similarity:.3f} | Doc: {metadata.get('document_id', 'N/A')[:30]} | Chunk: {metadata.get('chunk_index', '?')}/{metadata.get('total_chunks', '?')}")
         
         if verbose:
-            print(f"\n✅ Found {len(docs)} relevant chunks")
+            print(f"\n✅ {len(docs)} chunks passed similarity threshold")
         
         return docs
     
@@ -152,6 +234,13 @@ class SmartRetriever:
     ) -> List[Document]:
         """
         🔑 KUNCI: Fetch ALL chunks dari dokumen yang sama
+        
+        Flow:
+        1. Group by document_id
+        2. Sort by max similarity score
+        3. Limit to max_documents
+        4. Fetch ALL chunks untuk setiap document
+        5. Merge chunks
         """
         # Group by document_id
         docs_by_id: Dict[str, List[Document]] = defaultdict(list)
@@ -164,6 +253,7 @@ class SmartRetriever:
             
             docs_by_id[doc_id].append(doc)
             
+            # Track max score per document
             score = doc.metadata.get('similarity_score', 0)
             if doc_id not in doc_scores or score > doc_scores[doc_id]:
                 doc_scores[doc_id] = score
@@ -176,16 +266,16 @@ class SmartRetriever:
         )[:self.max_documents]
         
         if verbose:
-            print(f"\n📚 Aggregating {len(sorted_doc_ids)} documents")
+            print(f"\n📚 Aggregating {len(sorted_doc_ids)} documents (max: {self.max_documents})")
         
         # Fetch ALL chunks for each document
         aggregated: List[Document] = []
         
         for doc_id in sorted_doc_ids:
             if verbose:
-                print(f"\n   🔄 Fetching all chunks for: {doc_id}")
+                print(f"\n   🔄 Fetching all chunks for: {doc_id[:40]}...")
             
-            # Query ChromaDB untuk semua chunks dengan document_id ini
+            # Fetch ALL chunks untuk document_id ini dari ChromaDB
             all_chunks = self._fetch_all_chunks(doc_id)
             
             if all_chunks:
@@ -198,30 +288,27 @@ class SmartRetriever:
         return aggregated
     
     def _fetch_all_chunks(self, document_id: str) -> List[Document]:
-        """Fetch ALL chunks dengan document_id yang sama dari ChromaDB"""
+        """
+        Fetch ALL chunks dengan document_id yang sama dari ChromaDB
+        
+        Menggunakan VectorStoreManager.get_by_document_id()
+        """
         try:
-            results = self.collection.get(
-                where={"document_id": document_id},
-                include=["documents", "metadatas"]
-            )
+            # Use vectorstore manager method
+            chunks_data = self._vectorstore_manager.get_by_document_id(document_id)
             
-            if not results['ids']:
+            if not chunks_data:
                 return []
             
+            # Convert to Document objects
             chunks = []
-            for doc_id, content, metadata in zip(
-                results['ids'],
-                results['documents'],
-                results['metadatas']
-            ):
+            for chunk_data in chunks_data:
                 chunks.append(Document(
-                    page_content=content,
-                    metadata=metadata
+                    page_content=chunk_data["content"],
+                    metadata=chunk_data["metadata"]
                 ))
             
-            # Sort by chunk_index
-            chunks.sort(key=lambda x: x.metadata.get('chunk_index', 0))
-            
+            # Already sorted by chunk_index in get_by_document_id
             return chunks
             
         except Exception as e:
@@ -263,132 +350,75 @@ class SmartRetriever:
             metadata=base_metadata
         )
     
+    # =========================================================================
+    # UTILITY METHODS
+    # =========================================================================
+    
     def get_collection_info(self) -> Dict[str, Any]:
-        """Get collection info"""
-        count = self.collection.count()
-        
-        doc_ids = set()
-        if count > 0:
-            try:
-                all_results = self.collection.get(include=["metadatas"])
-                for meta in all_results.get('metadatas', []):
-                    if meta and 'document_id' in meta:
-                        doc_ids.add(meta['document_id'])
-            except:
-                pass
-        
-        return {
-            "total_chunks": count,
-            "unique_documents": len(doc_ids),
-            "document_ids": list(doc_ids)[:20]
-        }
-
-
-# ============================================================================
-# ENHANCED QUERY CHAIN
-# ============================================================================
-class EnhancedQueryChain:
-    """
-    Query Chain dengan context building yang optimal
-    """
+        """Get collection info (delegates to VectorStoreManager)"""
+        return self._vectorstore_manager.get_collection_info()
     
-    def __init__(
+    def similarity_search(
         self,
-        smart_retriever: SmartRetriever,
-        llm,
-        system_prompt: str,
-        query_prompt: str
-    ):
-        self.retriever = smart_retriever
-        self.llm = llm
-        self.system_prompt = system_prompt
-        self.query_prompt = query_prompt
+        query: str,
+        k: int = 5,
+        filter: Dict[str, Any] = None
+    ) -> List[Document]:
+        """
+        Simple similarity search (tanpa aggregation)
+        
+        Untuk backward compatibility atau simple use cases
+        """
+        return self._vectorstore_manager.similarity_search(
+            query=query,
+            k=k,
+            filter=filter
+        )
     
-    def query(self, question: str, verbose: bool = False) -> Dict[str, Any]:
-        """Execute RAG query"""
-        if verbose:
-            print(f"\n🚀 RAG PIPELINE")
-            print(f"❓ Question: {question}")
-        
-        # Retrieve (dengan aggregation)
-        docs = self.retriever.retrieve(question, verbose=verbose)
-        
-        if not docs:
-            return {
-                'answer': "Maaf, saya tidak menemukan informasi yang relevan dalam database.",
-                'sources': [],
-                'metadata': {
-                    'num_sources': 0,
-                    'relevance_check': 'FAILED - No relevant docs'
-                }
-            }
-        
-        # Check similarity
-        similarities = [doc.metadata.get('similarity_score', 0) for doc in docs]
-        avg_similarity = np.mean(similarities)
-        
-        if avg_similarity < 0.5:
-            return {
-                'answer': "Maaf, saya tidak yakin dengan informasi yang ditemukan. Silakan coba pertanyaan yang lebih spesifik.",
-                'sources': [],
-                'metadata': {
-                    'num_sources': len(docs),
-                    'avg_similarity': float(avg_similarity),
-                    'relevance_check': 'FAILED - Low similarity'
-                }
-            }
-        
-        # Build context
-        context = self._build_context(docs)
-        
-        if verbose:
-            print(f"\n📝 Context: {len(context)} chars from {len(docs)} documents")
-        
-        # Generate answer
-        full_prompt = f"{self.system_prompt}\n\n{self.query_prompt.format(question=question, context=context)}"
-        answer = self.llm.invoke(full_prompt).content
-        
-        # Build response
-        sources = [{
-            'source': doc.metadata.get('source', 'Unknown'),
-            'document_id': doc.metadata.get('document_id', 'Unknown'),
-            'jenjang': doc.metadata.get('jenjang', ''),
-            'tahun': doc.metadata.get('tahun', ''),
-            'similarity': doc.metadata.get('similarity_score', 0),
-            'merged_chunks': doc.metadata.get('merged_chunks', 1)
-        } for doc in docs]
-        
-        return {
-            'answer': answer,
-            'sources': sources,
-            'metadata': {
-                'num_sources': len(sources),
-                'avg_similarity': float(avg_similarity),
-                'max_similarity': float(max(similarities)),
-                'total_context_length': len(context),
-                'relevance_check': 'PASSED'
-            }
-        }
+    def similarity_search_with_score(
+        self,
+        query: str,
+        k: int = 5,
+        filter: Dict[str, Any] = None
+    ) -> List[tuple]:
+        """
+        Similarity search with scores
+        """
+        return self._vectorstore_manager.similarity_search_with_score(
+            query=query,
+            k=k,
+            filter=filter
+        )
+
+
+# =============================================================================
+# SINGLETON PATTERN
+# =============================================================================
+
+_smart_retriever_instance: Optional[SmartRetriever] = None
+
+
+def get_smart_retriever(config_path: str = None) -> SmartRetriever:
+    """
+    Get singleton SmartRetriever instance
     
-    def _build_context(self, docs: List[Document]) -> str:
-        """Build context dari aggregated documents"""
-        parts = []
-        
-        for i, doc in enumerate(docs, 1):
-            meta = doc.metadata
-            
-            header = [f"[Dokumen {i}]"]
-            if meta.get('source'):
-                header.append(f"Source: {meta['source']}")
-            if meta.get('jenjang'):
-                header.append(f"Jenjang: {meta['jenjang']}")
-            if meta.get('tahun'):
-                header.append(f"Tahun: {meta['tahun']}")
-            if meta.get('similarity_score'):
-                header.append(f"Relevance: {meta['similarity_score']:.1%}")
-            if meta.get('merged_chunks', 1) > 1:
-                header.append(f"({meta['merged_chunks']} chunks merged)")
-            
-            parts.append(f"{' | '.join(header)}\n{doc.page_content}")
-        
-        return "\n\n---\n\n".join(parts)
+    Args:
+        config_path: Path ke config.yaml
+    
+    Returns:
+        SmartRetriever singleton instance
+    """
+    global _smart_retriever_instance
+    
+    if _smart_retriever_instance is None:
+        print("🔧 Initializing SmartRetriever...")
+        _smart_retriever_instance = SmartRetriever(config_path=config_path)
+    
+    return _smart_retriever_instance
+
+
+def reset_smart_retriever():
+    """Reset singleton instance"""
+    global _smart_retriever_instance
+    _smart_retriever_instance = None
+    print("🔄 SmartRetriever reset")

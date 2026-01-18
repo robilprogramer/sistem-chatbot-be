@@ -1,11 +1,3 @@
-"""
-Enhanced Transactional Chat Router
-==================================
-Features:
-- Multiple file upload support di endpoint /chat
-- Rating integration
-- Auto-trigger integration
-"""
 
 from typing import Any, Dict, List, Optional
 import uuid
@@ -118,8 +110,7 @@ async def chat(
     - **file_type**: Tipe dokumen (e.g., "rapor_terakhir", "akta_kelahiran")
     - **user_id**: User ID
     """
-    print(f"Received message: {message} | Session ID: {session_id} | User: {user_id}")
-    
+
     if not session_id:
         session_id = str(uuid.uuid4())
     
