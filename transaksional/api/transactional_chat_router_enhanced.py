@@ -122,6 +122,7 @@ async def chat(
     rating_manager = get_rating_manager()
     if rating_manager.is_rating_in_progress(session_id):
         rating_result = rating_manager.process_rating_input(session_id, message)
+        print(f"Rating input processed: {rating_result}")
         if rating_result.get("is_rating_input"):
             return ChatResponse(
                 session_id=session_id,
