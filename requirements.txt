@@ -129,8 +129,8 @@ sympy==1.14.0
 tenacity==9.1.2
 tiktoken==0.12.0
 tokenizers==0.22.2
-torch==2.9.1+cpu
-torchvision==0.24.1+cpu
+# torch==2.9.1+cpu
+# torchvision==0.24.1+cpu
 tqdm==4.67.1
 typer==0.21.1
 typing-inspect==0.9.0
