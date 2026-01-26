@@ -43,13 +43,13 @@ RETRIEVAL_QUERIES = [
     },
     {
         "no": 2,
-        "query": "Persyaratan pendaftaran SMP",
+        "query": "Persyaratan pendaftaran",
         "expected_keywords": ["persyaratan", "pendaftaran", "smp", "dokumen", "syarat", "daftar"],
         "filter": None
     },
     {
         "no": 3,
-        "query": "Jadwal tahun ajaran baru",
+        "query": "Jadwal Pendaftaran",
         "expected_keywords": ["jadwal", "tahun", "ajaran", "kalender", "akademik", "semester"],
         "filter": None
     },

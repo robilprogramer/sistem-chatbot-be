@@ -2,7 +2,7 @@
 
 Pengujian performa RAG dilakukan untuk mengukur akurasi retrieval dan kualitas respons yang dihasilkan sistem.
 
-**Tanggal Pengujian:** 2026-01-19 14:45:35
+**Tanggal Pengujian:** 2026-01-25 07:11:48
 
 
 ## Pengujian Retrieval Accuracy
@@ -13,15 +13,15 @@ Pengujian retrieval accuracy mengukur ketepatan sistem dalam mengambil dokumen y
 
 | No | Query | Retrieved Docs | Relevant | Precision | Time (s) |
 |:--:|-------|:--------------:|:--------:|:---------:|:--------:|
-| 1 | Biaya Sekolah SD Al-Azhar Cibinong | 3 | 3 | 100.00% | 1.220 |
-| 2 | Persyaratan pendaftaran SMP | 3 | 3 | 100.00% | 0.465 |
-| 3 | Jadwal tahun ajaran baru | 3 | 3 | 100.00% | 0.415 |
-| 4 | Fasilitas sekolah | 3 | 3 | 100.00% | 0.791 |
-| 5 | Kurikulum yang digunakan | 3 | 0 | 0.00% | 0.639 |
+| 1 | Biaya Sekolah SD Al-Azhar Cibinong | 3 | 3 | 100.00% | 0.841 |
+| 2 | Persyaratan pendaftaran | 3 | 3 | 100.00% | 1.438 |
+| 3 | Jadwal Pendaftaran | 3 | 3 | 100.00% | 0.314 |
+| 4 | Fasilitas sekolah | 3 | 3 | 100.00% | 0.446 |
+| 5 | Kurikulum yang digunakan | 3 | 0 | 0.00% | 0.394 |
 
 **Rata-rata Precision:** 80.00%
 
-**Rata-rata Response Time:** 0.706s
+**Rata-rata Response Time:** 0.687s
 
 
 ## Pengujian Response Quality
@@ -48,7 +48,7 @@ Skala penilaian: 1 (Sangat Buruk) - 5 (Sangat Baik)
 
 **Jawaban:**
 
-> Berdasarkan dokumen "Biaya - SD Islam Al Azhar 27 Cibinong Tahun Ajaran 2026-2027", biaya pendaftaran untuk SD Cibinong terdiri dari beberapa komponen. Pertama, Uang Formulir sebesar Rp 550.000, kedua, Uang Pangkal sebesar Rp 25.575.000, dan ketiga, Uang Sekolah sebesar Rp 1.425.000. Biaya ini berlaku untuk pendaftar yang berasal dari sekolah di luar lingkungan Al Azhar. Untuk informasi lebih lanjut, calon pendaftar dapat menghubungi bagian pendaftaran di SD Islam Al Azhar 27 Cibinong.
+> Berdasarkan dokumen "Biaya - SD Islam Al Azhar 27 Cibinong Tahun Ajaran 2026-2027", biaya pendaftaran untuk SD Islam Al Azhar 27 Cibinong terdiri dari beberapa komponen. Pertama, Uang Formulir sebesar Rp 550.000, kedua, Uang Pangkal sebesar Rp 25.575.000, dan ketiga, Uang Sekolah sebesar Rp 1.425.000. Biaya ini berlaku untuk pendaftar yang berasal dari sekolah di luar lingkungan Al Azhar.
 
 
 **Jumlah Sumber:** 3
@@ -82,6 +82,6 @@ Skala penilaian: 1 (Sangat Buruk) - 5 (Sangat Baik)
 
 ## Kesimpulan Pengujian
 
-1. **Retrieval Accuracy:** Rata-rata precision mencapai 80.00% dengan waktu respons rata-rata 0.706 detik.
+1. **Retrieval Accuracy:** Rata-rata precision mencapai 80.00% dengan waktu respons rata-rata 0.687 detik.
 
 2. **Response Quality:** Rata-rata skor kualitas respons adalah 3.67/5.00.
