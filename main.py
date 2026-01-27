@@ -36,6 +36,11 @@ from transaksional.app.auto_trigger import get_trigger_manager, init_trigger_man
 from transaksional.app.rating_system import init_rating_manager, get_rating_manager
 
 
+
+# Router CS
+from cs.router import router as cs_router
+from cs.cs_agent_router import router as cs_agent_router
+
 # =============================================================================
 # LIFESPAN (Modern way to handle startup/shutdown)
 # =============================================================================
@@ -158,6 +163,9 @@ app.include_router(config_router)
 app.include_router(admin_router)
 app.include_router(registration_router)
 
+
+app.include_router(cs_router)
+app.include_router(cs_agent_router)
     
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
