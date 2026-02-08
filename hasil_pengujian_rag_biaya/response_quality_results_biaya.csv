@@ -1,0 +1,11 @@
+﻿Query ID,Query,Category,Relevance,Accuracy,Completeness,Average,Answer Length,Sources,Similarity,Time (s),Error
+Q-A01,Berapa jumlah SMA ,informasi,3,3,2,2.6667,76,3,0.7375,1.2350,
+Q-A02,Rincian biaya masuk SD Islam Al Azhar 1 Kebayoran Baru tahun 2026–2027 apa saja?,biaya_sekolah,5,5,5,5.0000,892,3,0.8573,2.7889,
+Q-A03,Berapa biaya pendidikan TK Islam Al Azhar 17 Bintaro tahun 2026?,biaya_sekolah,5,5,5,5.0000,551,3,0.8853,2.2230,
+Q-A04,Berapa total biaya sekolah,biaya_sekolah,4,3,2,3.0000,85,3,0.8025,1.0940,
+Q-B01,Berapa biaya formulir pendaftaran SD Al Azhar 27 Cibinong?,biaya_formulir,5,5,3,4.3333,219,3,0.8879,1.2918,
+Q-B02,Biaya pendaftaran SD Al Azhar Kebayoran Baru tahun 2026 berapa?,biaya_formulir,5,5,5,5.0000,538,3,0.8597,2.0612,
+Q-C01,Apa saja dokumen yang dibutuhkan?,syarat_pendaftaran,3,5,5,4.3333,909,3,0.7321,2.7370,
+Q-D01,Berapa uang pangkal SD Al Azhar 27 Cibinong?,uang_pangkal,4,5,4,4.3333,434,3,0.8350,12.9046,
+Q-D02,Uang pangkal SD Al Azhar Kebayoran Baru tahun 2026 berapa?,uang_pangkal,4,5,3,4.0000,215,3,0.8338,1.3843,
+Q-D03,Apakah TK Al Azhar 17 Bintaro memiliki uang pangkal?,uang_pangkal,4,5,3,4.0000,221,3,0.8289,1.4467,

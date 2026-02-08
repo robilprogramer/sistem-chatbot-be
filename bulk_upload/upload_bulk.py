@@ -10,7 +10,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # ============================
 # CONFIG
 # ============================
-API_URL = "http://localhost:8000/api/informational/v1/documents/upload"
+API_URL = "https://api.chatbotdev.online/api/informational/v1/documents/upload"
 
 INPUT_DIR = os.path.join(BASE_DIR, "input")
 SUCCESS_DIR = os.path.join(BASE_DIR, "success")

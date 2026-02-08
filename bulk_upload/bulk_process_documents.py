@@ -5,7 +5,7 @@ import time
 # ============================
 # CONFIG
 # ============================
-API_BASE_URL = "http://localhost:8000/api/informational/v1/documents"
+API_BASE_URL = "https://api.chatbotdev.online/api/informational/v1/documents"
 LIST_API_URL = f"{API_BASE_URL}?status=pending&limit=100"
 PROCESS_API_TEMPLATE = f"{API_BASE_URL}/{{document_id}}/process"
 

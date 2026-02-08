@@ -1,0 +1,41 @@
+﻿Query ID,Query,Category,Jenjang,Cabang,Chunk-1,Chunk-2,Chunk-3,Chunk-4,Chunk-5,P@3,R@3
+Q-A01,Berapa jumlah SMA ,informasi,SMA,kosong,0,0,0,,,0.00%,0.00%
+Q-A02,Rincian biaya masuk SD Islam Al Azhar 1 Kebayoran Baru tahun 2026–2027,biaya_sekolah,SD,Al Azhar 1 Kebayoran Baru,2,2,2,,,100.00%,100.00%
+Q-A03,Berapa biaya pendidikan TK Islam Al Azhar 17 Bintaro tahun 2026?,biaya_sekolah,TK,Al Azhar 17 Bintaro,2,2,2,,,100.00%,100.00%
+Q-A04,Berapa total biaya sekolah,biaya_sekolah,TK,Al Azhar 2 Pasar Minggu,1,2,2,,,100.00%,100.00%
+Q-A05,Biaya pendidikan TK Islam Al Azhar 51 Sidoarjo tahun ajaran 2026 berap,biaya_sekolah,TK,Al Azhar 51 Sidoarjo,2,2,1,,,100.00%,100.00%
+Q-A06,Berapa biaya masuk TK Islam Al Azhar 6 Sentra Primer tahun 2026–2027?,biaya_sekolah,TK,Al Azhar 6 Sentra Primer,2,2,2,,,100.00%,100.00%
+Q-A07,Rincian biaya SMP Islam Al Azhar tahun 2026 apa saja?,biaya_sekolah,SMP,Umum,2,1,1,,,100.00%,100.00%
+Q-A08,Berapa biaya penerimaan murid baru SD Islam Al Azhar 36 Bandung?,biaya_sekolah,SD,Al Azhar 36 Bandung,2,1,2,,,100.00%,100.00%
+Q-A09,Apa saja komponen biaya sekolah SD Al Azhar 27 Cibinong?,biaya_sekolah,SD,Al Azhar 27 Cibinong,2,2,1,,,100.00%,100.00%
+Q-A10,Biaya tahunan SD Al Azhar Kebayoran Baru tahun 2026 berapa?,biaya_sekolah,SD,Al Azhar Kebayoran Baru,2,2,1,,,100.00%,100.00%
+Q-A11,Berapa uang sekolah per bulan TK Al Azhar 17 Bintaro?,biaya_sekolah,TK,Al Azhar 17 Bintaro,2,1,1,,,100.00%,100.00%
+Q-A12,Biaya pendidikan TK Al Azhar Pasar Minggu meliputi apa saja?,biaya_sekolah,TK,Al Azhar Pasar Minggu,2,2,1,,,100.00%,100.00%
+Q-A13,Apakah biaya TK Al Azhar JAWAB BARAT sudah termasuk seragam?,biaya_sekolah,TK,JAWAB BARAT,1,1,1,,,100.00%,100.00%
+Q-A14,Rincian biaya SMP Al Azhar tahun ajaran terbaru?,biaya_sekolah,SMP,Umum,1,1,1,,,100.00%,100.00%
+Q-A15,Total  masuk sma Al Azhar padang 32 tahun 2026 berapa?,biaya_sekolah,SD,Al Azhar padang,1,1,1,,,100.00%,100.00%
+Q-B01,Berapa biaya formulir pendaftaran SD Al Azhar 27 Cibinong?,biaya_formulir,SD,Al Azhar 27 Cibinong,2,2,2,,,100.00%,100.00%
+Q-B02,Biaya pendaftaran SD Al Azhar Kebayoran Baru tahun 2026 berapa?,biaya_formulir,SD,Al Azhar Kebayoran Baru,2,2,2,,,100.00%,100.00%
+Q-B03,Apakah pendaftaran TK Al Azhar 17 Bintaro dikenakan biaya?,biaya_formulir,TK,Al Azhar 17 Bintaro,2,2,1,,,100.00%,100.00%
+Q-B04,Berapa biaya pendaftaran siswa baru SD Al Azhar Bandung?,biaya_formulir,SD,Al Azhar Bandung,2,1,2,,,100.00%,100.00%
+Q-B05,Biaya administrasi pendaftaran TK Al Azhar Pasar Minggu berapa?,biaya_formulir,TK,Al Azhar Pasar Minggu,2,1,2,,,100.00%,100.00%
+Q-B06,Apakah formulir pendaftaran Al Azhar gratis?,biaya_formulir,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-B07,Berapa biaya daftar ulang SD Al Azhar?,biaya_formulir,SD,Umum,1,1,1,,,100.00%,100.00%
+Q-B08,Biaya pendaftaran online Al Azhar berapa?,biaya_formulir,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-B09,Rincian biaya pendaftaran,rincian,sd,sd,1,1,1,,,100.00%,100.00%
+Q-C01,Apa saja dokumen yang dibutuhkan?,syarat_pendaftaran,SD,Umum,1,0,1,,,66.67%,100.00%
+Q-D01,Berapa uang pangkal SD Al Azhar 27 Cibinong?,uang_pangkal,SD,Al Azhar 27 Cibinong,1,1,1,,,100.00%,100.00%
+Q-D02,Uang pangkal SD Al Azhar Kebayoran Baru tahun 2026 berapa?,uang_pangkal,SD,Al Azhar Kebayoran Baru,1,1,1,,,100.00%,100.00%
+Q-D03,Apakah TK Al Azhar 17 Bintaro memiliki uang pangkal?,uang_pangkal,TK,Al Azhar 17 Bintaro,1,1,1,,,100.00%,100.00%
+Q-D04,Berapa uang pangkal masuk TK Al Azhar Pasar Minggu?,uang_pangkal,TK,Al Azhar Pasar Minggu,2,2,1,,,100.00%,100.00%
+Q-D05,Uang pangkal SD Al Azhar Bandung berapa?,uang_pangkal,SD,Al Azhar Bandung,1,1,1,,,100.00%,100.00%
+Q-D06,Rincian uang pangkal TK Al Azhar Sidoarjo?,uang_pangkal,TK,Al Azhar Sidoarjo,1,1,1,,,100.00%,100.00%
+Q-D07,Apakah uang pangkal bisa dicicil di Al Azhar?,uang_pangkal,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-D08,Berapa biaya uang gedung SD Al Azhar?,uang_pangkal,SD,Umum,1,1,1,,,100.00%,100.00%
+Q-D09,Uang pangkal SMP Al Azhar tahun ajaran 2026?,uang_pangkal,SMP,Umum,1,1,1,,,100.00%,100.00%
+Q-D10,Apakah uang pangkal berbeda tiap cabang Al Azhar?,uang_pangkal,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-D11,Sistem pembayaran uang pangkal Al Azhar bagaimana?,uang_pangkal,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-D12,Uang pangkal TK Al Azhar Sentra Primer berapa?,uang_pangkal,TK,Al Azhar Sentra Primer,1,1,1,,,100.00%,100.00%
+Q-D13,Apakah uang pangkal sudah termasuk fasilitas sekolah?,uang_pangkal,Umum,Umum,1,1,1,,,100.00%,100.00%
+Q-D14,Biaya awal masuk SD Al Azhar terdiri dari apa saja?,uang_pangkal,SD,Umum,2,1,1,,,100.00%,100.00%
+Q-D15,Total uang pangkal dan biaya masuk SD Al Azhar berapa?,uang_pangkal,SD,Umum,1,1,1,,,100.00%,100.00%
